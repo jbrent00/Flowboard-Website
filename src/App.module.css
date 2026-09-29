@@ -1,0 +1,97 @@
+.page {
+  width: min(1200px, 100%);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+.header { margin-bottom: 32px; }
+
+.brand {
+  margin: 0 0 28px;
+  color: #31547e;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.header h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.intro { margin: 0; color: #5d6878; }
+
+.addForm { max-width: 420px; margin-bottom: 24px; }
+.addForm label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.addForm label[for="task-description"] { margin-top: 12px; }
+.addControls { display: flex; gap: 8px; }
+.addControls input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #aab5c2;
+  border-radius: 6px;
+  font: inherit;
+}
+.addForm textarea { width: 100%; padding: 10px 12px; border: 1px solid #aab5c2; border-radius: 6px; font: inherit; resize: vertical; }
+.addForm button {
+  margin-top: 8px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: #31547e;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.addForm :focus-visible { outline: 2px solid #31547e; outline-offset: 2px; }
+.error { margin: 8px 0 0; color: #a52828; font-size: 14px; }
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.column {
+  min-height: 260px;
+  padding: 18px;
+  border: 1px solid #dce2e9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.column h2 {
+  margin: 0 0 24px;
+  font-size: 16px;
+}
+
+.tasks {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task {
+  padding: 12px;
+  overflow-wrap: anywhere;
+  border: 1px solid #e2e6eb;
+  border-radius: 6px;
+  background: #fafbfc;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.description { margin: 8px 0 0; color: #5d6878; white-space: pre-wrap; }
+
+.empty { margin: 0; color: #6b7480; font-size: 14px; }
+
+@media (max-width: 700px) {
+  .page { padding: 24px 16px; }
+  .addControls { flex-direction: column; }
+  .board { grid-template-columns: 1fr; }
+  .column { min-height: 120px; }
+}
