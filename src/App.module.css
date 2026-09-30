@@ -25,6 +25,17 @@
 .addForm { max-width: 420px; margin-bottom: 24px; }
 .addForm label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
 .addForm label[for="task-description"] { margin-top: 12px; }
+.addForm .extraLabel { margin-top: 12px; }
+.addForm select, .addForm input[type="datetime-local"] {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #aab5c2;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
 .addControls { display: flex; gap: 8px; }
 .addControls input {
   flex: 1;
@@ -37,6 +48,7 @@
 .addForm textarea { width: 100%; padding: 10px 12px; border: 1px solid #aab5c2; border-radius: 6px; font: inherit; resize: vertical; }
 .addForm button {
   margin-top: 8px;
+  margin-right: 8px;
   padding: 10px 16px;
   border: 0;
   border-radius: 6px;
@@ -46,6 +58,7 @@
   cursor: pointer;
 }
 .addForm :focus-visible { outline: 2px solid #31547e; outline-offset: 2px; }
+.addForm button[type="button"] { background: #fff; color: #31547e; border: 1px solid #31547e; }
 .error { margin: 8px 0 0; color: #a52828; font-size: 14px; }
 
 .board {
@@ -86,6 +99,62 @@
 }
 
 .description { margin: 8px 0 0; color: #5d6878; white-space: pre-wrap; }
+.metadata { margin: 8px 0 0; color: #5d6878; }
+.priority { text-transform: capitalize; }
+
+.cardAction {
+  display: block;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #31547e;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.deleteButton { color: #a52828; }
+
+.statusControl { display: grid; gap: 6px; margin-top: 12px; font-weight: 600; }
+.statusControl select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #aab5c2;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+}
+
+.editForm { display: grid; gap: 8px; }
+.editForm label { font-weight: 600; }
+.editForm input, .editForm textarea, .editForm select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #aab5c2;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+.editForm textarea { resize: vertical; }
+.editActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.editActions button {
+  padding: 7px 10px;
+  border: 1px solid #31547e;
+  border-radius: 6px;
+  background: #31547e;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.editActions button[type="button"] { background: #fff; color: #31547e; }
+.task :focus-visible { outline: 2px solid #31547e; outline-offset: 2px; }
 
 .empty { margin: 0; color: #6b7480; font-size: 14px; }
 
