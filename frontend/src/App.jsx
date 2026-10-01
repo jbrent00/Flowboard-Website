@@ -16,9 +16,7 @@ const initialTasks = [
   { id: 4, title: 'Set up workspace', status: 'completed', priority: 'low', dueDate: '' },
 ]
 
-const storageKey = 'flowboard.tasks.v1'
-
-function loadBoard() {
+function loadBoard(storageKey) {
   try {
     const saved = localStorage.getItem(storageKey)
     if (saved === null) return { tasks: initialTasks, error: '' }
@@ -43,8 +41,8 @@ function loadBoard() {
   }
 }
 
-export default function App() {
-  const [savedBoard] = useState(loadBoard)
+export default function App({ storageKey }) {
+  const [savedBoard] = useState(() => loadBoard(storageKey))
   const [tasks, setTasks] = useState(savedBoard.tasks)
   const [storageError, setStorageError] = useState(savedBoard.error)
   const [title, setTitle] = useState('')
@@ -59,6 +57,8 @@ export default function App() {
   const [editDueDate, setEditDueDate] = useState('')
   const [editError, setEditError] = useState('')
   const statusFocusId = useRef(null)
+  const editInputFocusId = useRef(null)
+  const editReturnFocusId = useRef(null)
 
   function updateTasks(nextTasks) {
     setTasks(nextTasks)
@@ -94,11 +94,18 @@ export default function App() {
   }
 
   function startEditing(task) {
+    editInputFocusId.current = task.id
     setEditingId(task.id)
     setEditTitle(task.title)
     setEditDescription(task.description || '')
     setEditPriority(task.priority)
     setEditDueDate(task.dueDate)
+    setEditError('')
+  }
+
+  function stopEditing() {
+    editReturnFocusId.current = editingId
+    setEditingId(null)
     setEditError('')
   }
 
@@ -119,8 +126,7 @@ export default function App() {
         }
         : task,
     ))
-    setEditingId(null)
-    setEditError('')
+    stopEditing()
   }
 
   function deleteTask(task) {
@@ -128,6 +134,7 @@ export default function App() {
       return
     }
 
+    document.getElementById(task.status)?.focus()
     updateTasks(tasks.filter((currentTask) => currentTask.id !== task.id))
   }
 
@@ -195,7 +202,7 @@ export default function App() {
 
           return (
             <section className={styles.column} key={status.id} aria-labelledby={status.id}>
-              <h2 id={status.id}>{status.label}</h2>
+              <h2 id={status.id} tabIndex={-1}>{status.label}</h2>
               {columnTasks.length > 0 ? (
                 <ul className={styles.tasks}>
                   {columnTasks.map((task) => (
@@ -212,6 +219,12 @@ export default function App() {
                             onChange={(event) => {
                               setEditTitle(event.target.value)
                               setEditError('')
+                            }}
+                            ref={(input) => {
+                              if (input && editInputFocusId.current === task.id) {
+                                input.focus()
+                                editInputFocusId.current = null
+                              }
                             }}
                           />
                           <label htmlFor={`edit-description-${task.id}`}>Description (optional)</label>
@@ -239,7 +252,7 @@ export default function App() {
                           {editError && <p className={styles.error} id={`edit-error-${task.id}`} role="alert">{editError}</p>}
                           <div className={styles.editActions}>
                             <button type="submit">Save</button>
-                            <button type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                            <button type="button" onClick={stopEditing}>Cancel</button>
                           </div>
                         </form>
                       ) : (
@@ -272,7 +285,17 @@ export default function App() {
                               ))}
                             </select>
                           </label>
-                          <button className={styles.cardAction} type="button" onClick={() => startEditing(task)}>
+                          <button
+                            className={styles.cardAction}
+                            type="button"
+                            onClick={() => startEditing(task)}
+                            ref={(button) => {
+                              if (button && editReturnFocusId.current === task.id) {
+                                button.focus()
+                                editReturnFocusId.current = null
+                              }
+                            }}
+                          >
                             Edit {task.title}
                           </button>
                           <button className={`${styles.cardAction} ${styles.deleteButton}`} type="button" onClick={() => deleteTask(task)}>
