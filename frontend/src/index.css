@@ -42,7 +42,21 @@ body { margin: 0; }
   padding: 16px 24px 0;
 }
 .accountBar a { color: #31547e; font-weight: 700; }
+.accountActions { display: flex; align-items: center; gap: 12px; }
+.accountActions button {
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: #31547e;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.accountActions button:focus-visible { outline: 2px solid #31547e; outline-offset: 2px; }
+.accountActions button:disabled { cursor: wait; }
+.serviceStatus { width: min(1200px, 100%); margin: 8px auto 0; padding: 0 24px; font-size: 14px; }
 
 @media (max-width: 800px) {
   .accountBar { padding: 16px 16px 0; }
+  .serviceStatus { padding: 0 16px; }
 }
