@@ -2,8 +2,7 @@ import { RedirectToSignIn, SignIn, SignUp, UserButton, useAuth } from '@clerk/re
 import { useEffect, useState } from 'react'
 import { Link, Navigate, Route, Routes } from 'react-router'
 import App from './App.jsx'
-
-const backendBaseUrl = import.meta.env.VITE_BACKEND_BASE_URL?.replace(/\/+$/, '')
+import { backendBaseUrl, listTasks } from './taskApi.js'
 
 function Home() {
   const { isLoaded, userId } = useAuth()
@@ -74,18 +73,12 @@ function ProtectedBoard() {
         setServiceStatus('Sign in again to check the task service.')
         return
       }
-      const response = await fetch(`${backendBaseUrl}/api/tasks`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (response.status === 501) {
-        setServiceStatus('Task service connected. Tasks still save in this browser.')
-      } else if (response.ok) {
-        setServiceStatus('Task service connected.')
-      } else {
-        setServiceStatus(`Task service returned ${response.status}.`)
-      }
-    } catch {
-      setServiceStatus('Could not reach the task service. Check the backend URL and allowed origin.')
+      const tasks = await listTasks(token)
+      setServiceStatus(`Task service connected. ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'} saved on the server.`)
+    } catch (error) {
+      setServiceStatus(error instanceof Error && error.message.startsWith('Task service returned')
+        ? error.message
+        : 'Could not reach the task service. Check the backend URL and allowed origin.')
     } finally {
       setCheckingService(false)
     }
@@ -104,7 +97,7 @@ function ProtectedBoard() {
         </div>
       </nav>
       {serviceStatus && <p className="serviceStatus" role="status">{serviceStatus}</p>}
-      <App key={userId} storageKey={`flowboard.tasks.v1.${userId}`} />
+      <App key={userId} getToken={getToken} />
     </>
   )
 }

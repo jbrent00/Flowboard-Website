@@ -2,6 +2,7 @@ import express from 'express'
 import { clerkMiddleware, getAuth } from '@clerk/express'
 import { verifyWebhook } from '@clerk/express/webhooks'
 import { syncClerkUser } from './userProfile.js'
+import { taskRoutes } from './tasks.js'
 
 const app = express()
 const port = Number(process.env.PORT) || 3001
@@ -77,9 +78,7 @@ app.use('/api/tasks', clerkMiddleware(), (request, response, next) => {
   next()
 })
 
-app.get('/api/tasks', (_request, response) => {
-  response.status(501).json({ error: 'Task storage is not ready' })
-})
+app.use('/api/tasks', express.json({ limit: '16kb' }), taskRoutes)
 
 app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`)

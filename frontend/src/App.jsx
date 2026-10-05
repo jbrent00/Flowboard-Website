@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import styles from './App.module.css'
+import { createTask, deleteTask as removeTask, listTasks, updateTask } from './taskApi.js'
 
 const statuses = [
   { id: 'todo', label: 'To do' },
@@ -9,42 +10,13 @@ const statuses = [
 
 const priorities = ['low', 'medium', 'high']
 
-const initialTasks = [
-  { id: 1, title: 'Outline project goals', status: 'todo', priority: 'low', dueDate: '' },
-  { id: 2, title: 'Review weekly plan', status: 'todo', priority: 'low', dueDate: '' },
-  { id: 3, title: 'Draft project update', status: 'in-progress', priority: 'low', dueDate: '' },
-  { id: 4, title: 'Set up workspace', status: 'completed', priority: 'low', dueDate: '' },
-]
-
-function loadBoard(storageKey) {
-  try {
-    const saved = localStorage.getItem(storageKey)
-    if (saved === null) return { tasks: initialTasks, error: '' }
-    const tasks = JSON.parse(saved)
-    const valid = Array.isArray(tasks) && tasks.every((task) =>
-      task && (typeof task.id === 'string' && task.id.trim() || Number.isSafeInteger(task.id)) &&
-      typeof task.title === 'string' && task.title.trim() && task.title.length <= 100 &&
-      (task.description === undefined || typeof task.description === 'string' && task.description.length <= 500) &&
-      statuses.some((status) => status.id === task.status) && priorities.includes(task.priority) &&
-      typeof task.dueDate === 'string' && (task.dueDate === '' ||
-        /^\d{4,6}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(task.dueDate) && Number.isFinite(Date.parse(task.dueDate))),
-    )
-    if (!valid || new Set(tasks.map((task) => String(task.id))).size !== tasks.length) {
-      throw new Error('Invalid saved board')
-    }
-    return { tasks, error: '' }
-  } catch {
-    return {
-      tasks: initialTasks,
-      error: 'Saved tasks could not be loaded. Showing samples; your next successful save will replace the saved board.',
-    }
-  }
-}
-
-export default function App({ storageKey }) {
-  const [savedBoard] = useState(() => loadBoard(storageKey))
-  const [tasks, setTasks] = useState(savedBoard.tasks)
-  const [storageError, setStorageError] = useState(savedBoard.error)
+export default function App({ getToken }) {
+  const [tasks, setTasks] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [boardError, setBoardError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [busyId, setBusyId] = useState(null)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('low')
@@ -60,18 +32,25 @@ export default function App({ storageKey }) {
   const editInputFocusId = useRef(null)
   const editReturnFocusId = useRef(null)
 
-  function updateTasks(nextTasks) {
-    setTasks(nextTasks)
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(nextTasks))
-      setStorageError('')
-    } catch {
-      setStorageError('Changes could not be saved in this browser and may be lost on reload. Keep this tab open and try again.')
+  useEffect(() => {
+    let active = true
+    async function load() {
+      try {
+        const saved = await listTasks(await getToken())
+        if (active) setTasks(saved)
+      } catch {
+        if (active) setLoadError('Tasks could not be loaded. Reload the page to try again.')
+      } finally {
+        if (active) setLoading(false)
+      }
     }
-  }
+    load()
+    return () => { active = false }
+  }, [getToken])
 
-  function handleAddTask(event) {
+  async function handleAddTask(event) {
     event.preventDefault()
+    if (saving) return
     const trimmedTitle = title.trim()
 
     if (!trimmedTitle) {
@@ -79,18 +58,23 @@ export default function App({ storageKey }) {
       return
     }
 
-    updateTasks([
-      ...tasks,
-      {
-        id: crypto.randomUUID(), title: trimmedTitle, description: description.trim(),
-        status: 'todo', priority, dueDate,
-      },
-    ])
-    setTitle('')
-    setDescription('')
-    setPriority('low')
-    setDueDate('')
-    setError('')
+    setSaving(true)
+    try {
+      const saved = await createTask(await getToken(), {
+        title: trimmedTitle, description: description.trim(), status: 'todo', priority, dueDate,
+      })
+      setTasks((current) => [...current, saved])
+      setTitle('')
+      setDescription('')
+      setPriority('low')
+      setDueDate('')
+      setError('')
+      setBoardError('')
+    } catch {
+      setError('Task could not be saved. Your entries are still here.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function startEditing(task) {
@@ -109,8 +93,9 @@ export default function App({ storageKey }) {
     setEditError('')
   }
 
-  function saveEdit(event) {
+  async function saveEdit(event) {
     event.preventDefault()
+    if (busyId !== null) return
     const trimmedTitle = editTitle.trim()
 
     if (!trimmedTitle) {
@@ -118,32 +103,57 @@ export default function App({ storageKey }) {
       return
     }
 
-    updateTasks(tasks.map((task) =>
-      task.id === editingId
-        ? {
-          ...task, title: trimmedTitle, description: editDescription.trim(),
-          priority: editPriority, dueDate: editDueDate,
-        }
-        : task,
-    ))
-    stopEditing()
+    setBusyId(editingId)
+    try {
+      const saved = await updateTask(await getToken(), editingId, {
+        title: trimmedTitle, description: editDescription.trim(),
+        priority: editPriority, dueDate: editDueDate,
+      })
+      setTasks((current) => current.map((task) => task.id === editingId ? saved : task))
+      setBoardError('')
+      stopEditing()
+    } catch {
+      setEditError('Task could not be saved. Your edits are still here.')
+    } finally {
+      setBusyId(null)
+    }
   }
 
-  function deleteTask(task) {
+  async function deleteTask(task) {
+    if (busyId !== null) return
     if (!window.confirm(`Delete "${task.title}" from the board?`)) {
       return
     }
-
-    document.getElementById(task.status)?.focus()
-    updateTasks(tasks.filter((currentTask) => currentTask.id !== task.id))
+    setBusyId(task.id)
+    try {
+      await removeTask(await getToken(), task.id)
+      document.getElementById(task.status)?.focus()
+      setTasks((current) => current.filter((item) => item.id !== task.id))
+      setBoardError('')
+    } catch {
+      setBoardError('Task could not be deleted. Please try again.')
+    } finally {
+      setBusyId(null)
+    }
   }
 
-  function changeStatus(taskId, newStatus) {
-    statusFocusId.current = taskId
-    updateTasks(tasks.map((task) =>
-      task.id === taskId ? { ...task, status: newStatus } : task,
-    ))
+  async function changeStatus(taskId, newStatus) {
+    if (busyId !== null) return
+    setBusyId(taskId)
+    try {
+      const saved = await updateTask(await getToken(), taskId, { status: newStatus })
+      statusFocusId.current = taskId
+      setTasks((current) => current.map((task) => task.id === taskId ? saved : task))
+      setBoardError('')
+    } catch {
+      setBoardError('Task status could not be saved. Please try again.')
+    } finally {
+      setBusyId(null)
+    }
   }
+
+  if (loading) return <main className={styles.page}><p role="status">Loading tasks...</p></main>
+  if (loadError) return <main className={styles.page}><p className={styles.error} role="alert">{loadError}</p></main>
 
   return (
     <main className={styles.page}>
@@ -152,7 +162,7 @@ export default function App({ storageKey }) {
         <h1>My tasks</h1>
         <p className={styles.intro}>A simple place to see what needs doing.</p>
       </header>
-      {storageError && <p className={styles.error} role="alert">{storageError}</p>}
+      {boardError && <p className={styles.error} role="alert">{boardError}</p>}
 
       <form className={styles.addForm} onSubmit={handleAddTask}>
         <label htmlFor="task-title">Task title</label>
@@ -192,7 +202,7 @@ export default function App({ storageKey }) {
           onChange={(event) => setDueDate(event.target.value)}
         />
         {dueDate && <button type="button" onClick={() => setDueDate('')}>Clear due date</button>}
-        <button type="submit">Add task</button>
+        <button type="submit" disabled={saving}>Add task</button>
         {error && <p className={styles.error} id="task-title-error" role="alert">{error}</p>}
       </form>
 
@@ -251,8 +261,8 @@ export default function App({ storageKey }) {
                           {editDueDate && <button className={styles.cardAction} type="button" onClick={() => setEditDueDate('')}>Clear due date</button>}
                           {editError && <p className={styles.error} id={`edit-error-${task.id}`} role="alert">{editError}</p>}
                           <div className={styles.editActions}>
-                            <button type="submit">Save</button>
-                            <button type="button" onClick={stopEditing}>Cancel</button>
+                            <button type="submit" disabled={busyId !== null}>Save</button>
+                            <button type="button" onClick={stopEditing} disabled={busyId !== null}>Cancel</button>
                           </div>
                         </form>
                       ) : (
@@ -272,6 +282,7 @@ export default function App({ storageKey }) {
                               aria-label={`Status for ${task.title}`}
                               value={task.status}
                               onChange={(event) => changeStatus(task.id, event.target.value)}
+                              disabled={busyId !== null}
                               ref={(select) => {
                                 // Moving columns remounts the card, so restore focus to its control.
                                 if (select && statusFocusId.current === task.id) {
@@ -289,6 +300,7 @@ export default function App({ storageKey }) {
                             className={styles.cardAction}
                             type="button"
                             onClick={() => startEditing(task)}
+                            disabled={busyId !== null}
                             ref={(button) => {
                               if (button && editReturnFocusId.current === task.id) {
                                 button.focus()
@@ -298,7 +310,7 @@ export default function App({ storageKey }) {
                           >
                             Edit {task.title}
                           </button>
-                          <button className={`${styles.cardAction} ${styles.deleteButton}`} type="button" onClick={() => deleteTask(task)}>
+                          <button className={`${styles.cardAction} ${styles.deleteButton}`} type="button" onClick={() => deleteTask(task)} disabled={busyId !== null}>
                             Delete {task.title}
                           </button>
                         </>
