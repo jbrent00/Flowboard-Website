@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import styles from './App.module.css'
-import { createTask, deleteTask as removeTask, listTasks, updateTask } from './taskApi.js'
+import { createTask, deleteTask as removeTask, listTasks, reorderTasks, updateTask } from './taskApi.js'
 
 const statuses = [
   { id: 'todo', label: 'To do' },
@@ -10,24 +10,39 @@ const statuses = [
 
 const priorities = ['low', 'medium', 'high']
 
+function validateTask(title, description, dueDate) {
+  if (!title.trim()) return { field: 'title', message: 'Enter a task title.' }
+  if (title.trim().length > 100) return { field: 'title', message: 'Keep the title under 100 characters.' }
+  if (description.trim().length > 500) return { field: 'description', message: 'Keep the description under 500 characters.' }
+  if (dueDate && !Number.isFinite(new Date(dueDate).getTime())) {
+    return { field: 'dueDate', message: 'Enter a valid due date and time.' }
+  }
+  return null
+}
+
 export default function App({ getToken }) {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [boardError, setBoardError] = useState('')
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [draggedId, setDraggedId] = useState(null)
+  const [dropTarget, setDropTarget] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('low')
   const [dueDate, setDueDate] = useState('')
   const [error, setError] = useState('')
+  const [errorField, setErrorField] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editPriority, setEditPriority] = useState('low')
   const [editDueDate, setEditDueDate] = useState('')
   const [editError, setEditError] = useState('')
+  const [editErrorField, setEditErrorField] = useState('')
   const statusFocusId = useRef(null)
   const editInputFocusId = useRef(null)
   const editReturnFocusId = useRef(null)
@@ -35,33 +50,35 @@ export default function App({ getToken }) {
   useEffect(() => {
     let active = true
     async function load() {
+      setLoading(true)
+      setLoadError('')
       try {
         const saved = await listTasks(await getToken())
         if (active) setTasks(saved)
       } catch {
-        if (active) setLoadError('Tasks could not be loaded. Reload the page to try again.')
+        if (active) setLoadError('Tasks could not be loaded. Check your connection and try again.')
       } finally {
         if (active) setLoading(false)
       }
     }
     load()
     return () => { active = false }
-  }, [getToken])
+  }, [getToken, loadAttempt])
 
   async function handleAddTask(event) {
     event.preventDefault()
     if (saving) return
-    const trimmedTitle = title.trim()
-
-    if (!trimmedTitle) {
-      setError('Enter a task title.')
+    const validation = validateTask(title, description, dueDate)
+    if (validation) {
+      setError(validation.message)
+      setErrorField(validation.field)
       return
     }
 
     setSaving(true)
     try {
       const saved = await createTask(await getToken(), {
-        title: trimmedTitle, description: description.trim(), status: 'todo', priority, dueDate,
+        title: title.trim(), description: description.trim(), status: 'todo', priority, dueDate,
       })
       setTasks((current) => [...current, saved])
       setTitle('')
@@ -69,9 +86,11 @@ export default function App({ getToken }) {
       setPriority('low')
       setDueDate('')
       setError('')
+      setErrorField('')
       setBoardError('')
     } catch {
       setError('Task could not be saved. Your entries are still here.')
+      setErrorField('')
     } finally {
       setSaving(false)
     }
@@ -85,28 +104,30 @@ export default function App({ getToken }) {
     setEditPriority(task.priority)
     setEditDueDate(task.dueDate)
     setEditError('')
+    setEditErrorField('')
   }
 
   function stopEditing() {
     editReturnFocusId.current = editingId
     setEditingId(null)
     setEditError('')
+    setEditErrorField('')
   }
 
   async function saveEdit(event) {
     event.preventDefault()
     if (busyId !== null) return
-    const trimmedTitle = editTitle.trim()
-
-    if (!trimmedTitle) {
-      setEditError('Enter a task title.')
+    const validation = validateTask(editTitle, editDescription, editDueDate)
+    if (validation) {
+      setEditError(validation.message)
+      setEditErrorField(validation.field)
       return
     }
 
     setBusyId(editingId)
     try {
       const saved = await updateTask(await getToken(), editingId, {
-        title: trimmedTitle, description: editDescription.trim(),
+        title: editTitle.trim(), description: editDescription.trim(),
         priority: editPriority, dueDate: editDueDate,
       })
       setTasks((current) => current.map((task) => task.id === editingId ? saved : task))
@@ -114,6 +135,7 @@ export default function App({ getToken }) {
       stopEditing()
     } catch {
       setEditError('Task could not be saved. Your edits are still here.')
+      setEditErrorField('')
     } finally {
       setBusyId(null)
     }
@@ -152,8 +174,63 @@ export default function App({ getToken }) {
     }
   }
 
+  async function reorderColumn(taskId, targetId = null, after = false) {
+    const task = tasks.find((item) => item.id === taskId)
+    if (!task || busyId !== null) return
+    const column = tasks.filter((item) => item.status === task.status)
+      .sort((a, b) => a.orderIndex - b.orderIndex ||
+        a.createdAt.localeCompare(b.createdAt) || a.id - b.id)
+    const ids = column.map((item) => item.id).filter((id) => id !== taskId)
+    const targetIndex = targetId === null ? ids.length : ids.indexOf(targetId)
+    if (targetIndex < 0) return
+    ids.splice(targetIndex + Number(after), 0, taskId)
+    if (ids.every((id, index) => id === column[index].id)) return
+
+    setBusyId(taskId)
+    try {
+      await reorderTasks(await getToken(), task.status, ids)
+      setTasks((current) => current.map((item) => item.status === task.status && ids.includes(item.id)
+        ? { ...item, orderIndex: ids.indexOf(item.id) } : item))
+      setBoardError('')
+    } catch {
+      setBoardError('Task order could not be saved. Reload and try again.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  function clearDrag() {
+    setDraggedId(null)
+    setDropTarget('')
+  }
+
+  function dropOnColumn(event, status) {
+    event.preventDefault()
+    const task = tasks.find((item) => item.id === draggedId)
+    clearDrag()
+    if (!task || busyId !== null) return
+    if (task.status === status) reorderColumn(task.id)
+    else changeStatus(task.id, status)
+  }
+
+  function dropOnCard(event, target) {
+    const task = tasks.find((item) => item.id === draggedId)
+    if (!task || task.status !== target.status) return
+    event.preventDefault()
+    event.stopPropagation()
+    const box = event.currentTarget.getBoundingClientRect()
+    const after = event.clientY > box.top + box.height / 2
+    clearDrag()
+    if (task.id !== target.id) reorderColumn(task.id, target.id, after)
+  }
+
   if (loading) return <main className={styles.page}><p role="status">Loading tasks...</p></main>
-  if (loadError) return <main className={styles.page}><p className={styles.error} role="alert">{loadError}</p></main>
+  if (loadError) return (
+    <main className={styles.page}>
+      <p className={styles.error} role="alert">{loadError}</p>
+      <button className={styles.retryButton} type="button" onClick={() => setLoadAttempt((count) => count + 1)}>Try again</button>
+    </main>
+  )
 
   return (
     <main className={styles.page}>
@@ -172,11 +249,12 @@ export default function App({ getToken }) {
             type="text"
             value={title}
             maxLength={100}
-            aria-invalid={Boolean(error)}
-            aria-describedby={error ? 'task-title-error' : undefined}
+            aria-invalid={errorField === 'title'}
+            aria-describedby={errorField === 'title' ? 'task-form-error' : undefined}
             onChange={(event) => {
               setTitle(event.target.value)
               setError('')
+              setErrorField('')
             }}
           />
         </div>
@@ -186,7 +264,9 @@ export default function App({ getToken }) {
           value={description}
           maxLength={500}
           rows={3}
-          onChange={(event) => setDescription(event.target.value)}
+          aria-invalid={errorField === 'description'}
+          aria-describedby={errorField === 'description' ? 'task-form-error' : undefined}
+          onChange={(event) => { setDescription(event.target.value); setError(''); setErrorField('') }}
         />
         <label className={styles.extraLabel} htmlFor="task-priority">Priority</label>
         <select id="task-priority" value={priority} onChange={(event) => setPriority(event.target.value)}>
@@ -199,24 +279,60 @@ export default function App({ getToken }) {
           id="task-due-date"
           type="datetime-local"
           value={dueDate}
-          onChange={(event) => setDueDate(event.target.value)}
+          aria-invalid={errorField === 'dueDate'}
+          aria-describedby={errorField === 'dueDate' ? 'task-form-error' : undefined}
+          onChange={(event) => { setDueDate(event.target.value); setError(''); setErrorField('') }}
         />
         {dueDate && <button type="button" onClick={() => setDueDate('')}>Clear due date</button>}
-        <button type="submit" disabled={saving}>Add task</button>
-        {error && <p className={styles.error} id="task-title-error" role="alert">{error}</p>}
+        <button type="submit" disabled={saving}>{saving ? 'Adding task...' : 'Add task'}</button>
+        {error && <p className={styles.error} id="task-form-error" role="alert">{error}</p>}
       </form>
 
+      {tasks.length === 0 && <p className={styles.boardEmpty}>Your board is empty. Add a task above to get started.</p>}
+      <p className={styles.dragHint}>Drag cards between columns or use their Status menus.</p>
       <section className={styles.board} aria-label="Task board">
         {statuses.map((status) => {
-          const columnTasks = tasks.filter((task) => task.status === status.id)
+          const columnTasks = tasks
+            .filter((task) => task.status === status.id)
+            .sort((a, b) => a.orderIndex - b.orderIndex ||
+              a.createdAt.localeCompare(b.createdAt) || a.id - b.id)
 
           return (
-            <section className={styles.column} key={status.id} aria-labelledby={status.id}>
+            <section className={`${styles.column} ${dropTarget === status.id ? styles.dropColumn : ''}`}
+              key={status.id} aria-labelledby={status.id}
+              onDragOver={(event) => {
+                if (draggedId === null || busyId !== null) return
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                if (dropTarget !== status.id) setDropTarget(status.id)
+              }}
+              onDrop={(event) => dropOnColumn(event, status.id)}>
               <h2 id={status.id} tabIndex={-1}>{status.label}</h2>
               {columnTasks.length > 0 ? (
                 <ul className={styles.tasks}>
                   {columnTasks.map((task) => (
-                    <li className={styles.task} key={task.id}>
+                    <li className={`${styles.task} ${draggedId === task.id ? styles.dragging : ''}
+                      ${dropTarget === `before-${task.id}` ? styles.dropBefore : ''}
+                      ${dropTarget === `after-${task.id}` ? styles.dropAfter : ''}`}
+                      key={task.id} draggable={editingId !== task.id && busyId === null}
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData('text/plain', String(task.id))
+                        event.dataTransfer.effectAllowed = 'move'
+                        setDraggedId(task.id)
+                      }}
+                      onDragEnd={clearDrag}
+                      onDragOver={(event) => {
+                        const source = tasks.find((item) => item.id === draggedId)
+                        if (!source || source.status !== task.status || source.id === task.id) return
+                        event.preventDefault()
+                        event.dataTransfer.dropEffect = 'move'
+                        event.stopPropagation()
+                        const box = event.currentTarget.getBoundingClientRect()
+                        const side = event.clientY > box.top + box.height / 2 ? 'after' : 'before'
+                        const target = `${side}-${task.id}`
+                        if (dropTarget !== target) setDropTarget(target)
+                      }}
+                      onDrop={(event) => dropOnCard(event, task)}>
                       {editingId === task.id ? (
                         <form className={styles.editForm} onSubmit={saveEdit}>
                           <label htmlFor={`edit-title-${task.id}`}>Task title</label>
@@ -224,11 +340,12 @@ export default function App({ getToken }) {
                             id={`edit-title-${task.id}`}
                             value={editTitle}
                             maxLength={100}
-                            aria-invalid={Boolean(editError)}
-                            aria-describedby={editError ? `edit-error-${task.id}` : undefined}
+                            aria-invalid={editErrorField === 'title'}
+                            aria-describedby={editErrorField === 'title' ? `edit-error-${task.id}` : undefined}
                             onChange={(event) => {
                               setEditTitle(event.target.value)
                               setEditError('')
+                              setEditErrorField('')
                             }}
                             ref={(input) => {
                               if (input && editInputFocusId.current === task.id) {
@@ -243,7 +360,9 @@ export default function App({ getToken }) {
                             value={editDescription}
                             maxLength={500}
                             rows={3}
-                            onChange={(event) => setEditDescription(event.target.value)}
+                            aria-invalid={editErrorField === 'description'}
+                            aria-describedby={editErrorField === 'description' ? `edit-error-${task.id}` : undefined}
+                            onChange={(event) => { setEditDescription(event.target.value); setEditError(''); setEditErrorField('') }}
                           />
                           <label htmlFor={`edit-priority-${task.id}`}>Priority</label>
                           <select id={`edit-priority-${task.id}`} value={editPriority} onChange={(event) => setEditPriority(event.target.value)}>
@@ -256,12 +375,14 @@ export default function App({ getToken }) {
                             id={`edit-due-date-${task.id}`}
                             type="datetime-local"
                             value={editDueDate}
-                            onChange={(event) => setEditDueDate(event.target.value)}
+                            aria-invalid={editErrorField === 'dueDate'}
+                            aria-describedby={editErrorField === 'dueDate' ? `edit-error-${task.id}` : undefined}
+                            onChange={(event) => { setEditDueDate(event.target.value); setEditError(''); setEditErrorField('') }}
                           />
                           {editDueDate && <button className={styles.cardAction} type="button" onClick={() => setEditDueDate('')}>Clear due date</button>}
                           {editError && <p className={styles.error} id={`edit-error-${task.id}`} role="alert">{editError}</p>}
                           <div className={styles.editActions}>
-                            <button type="submit" disabled={busyId !== null}>Save</button>
+                            <button type="submit" disabled={busyId !== null}>{busyId === task.id ? 'Saving...' : 'Save'}</button>
                             <button type="button" onClick={stopEditing} disabled={busyId !== null}>Cancel</button>
                           </div>
                         </form>
@@ -319,7 +440,7 @@ export default function App({ getToken }) {
                   ))}
                 </ul>
               ) : (
-                <p className={styles.empty}>No tasks yet</p>
+                <p className={styles.empty}>No tasks in this status</p>
               )}
             </section>
           )

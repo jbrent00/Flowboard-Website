@@ -63,6 +63,20 @@
 .addForm :focus-visible { outline: 2px solid #31547e; outline-offset: 2px; }
 .addForm button[type="button"] { background: #fff; color: #31547e; border: 1px solid #31547e; }
 .error { margin: 8px 0 0; color: #a52828; font-size: 14px; }
+.boardEmpty { margin: 0 0 16px; color: #5d6878; }
+.dragHint { margin: 0 0 12px; color: #5d6878; font-size: 14px; }
+.retryButton {
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: #31547e;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.retryButton:focus-visible { outline: 2px solid #31547e; outline-offset: 3px; }
 
 .board {
   display: grid;
@@ -77,6 +91,7 @@
   border-radius: 8px;
   background: #fff;
 }
+.dropColumn { outline: 2px dashed #31547e; outline-offset: -4px; }
 
 .column h2 {
   margin: 0 0 24px;
@@ -101,6 +116,10 @@
   font-size: 14px;
   line-height: 1.4;
 }
+.task[draggable="true"] { cursor: grab; }
+.dragging { opacity: .55; }
+.dropBefore { box-shadow: inset 0 3px #31547e; }
+.dropAfter { box-shadow: inset 0 -3px #31547e; }
 
 .description { margin: 8px 0 0; color: #5d6878; white-space: pre-wrap; }
 .metadata { margin: 8px 0 0; color: #5d6878; }

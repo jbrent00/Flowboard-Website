@@ -16,6 +16,14 @@ function isMissingTask(error: unknown) {
   return error !== null && typeof error === 'object' && 'code' in error && error.code === 'P2025'
 }
 
+async function nextOrderIndex(userId: string, status: 'todo' | 'in_progress' | 'completed') {
+  const result = await getPrisma().task.aggregate({
+    where: { createdById: userId, status },
+    _max: { orderIndex: true },
+  })
+  return (result._max.orderIndex ?? -1) + 1
+}
+
 taskRoutes.get('/', async (request, response) => {
   const { userId } = getAuth(request)
   if (!userId) {
@@ -26,7 +34,7 @@ taskRoutes.get('/', async (request, response) => {
   try {
     const tasks = await getPrisma().task.findMany({
       where: { createdById: userId },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
     })
     response.json(tasks)
   } catch (error) {
@@ -66,11 +74,13 @@ taskRoutes.post('/', async (request, response) => {
   }
 
   try {
+    const orderIndex = await nextOrderIndex(userId, status)
     const task = await getPrisma().task.create({
       data: {
         title: title.trim(),
         description: description.trim() || null,
         status,
+        orderIndex,
         priority,
         dueDate: parsedDueDate,
         completedAt: status === 'completed' ? new Date() : null,
@@ -83,6 +93,54 @@ taskRoutes.post('/', async (request, response) => {
   } catch (error) {
     console.error('Could not create task', error)
     response.status(503).json({ error: 'Task could not be saved' })
+  }
+})
+
+taskRoutes.patch('/order', async (request, response) => {
+  const { userId } = getAuth(request)
+  if (!userId) {
+    response.status(401).json({ error: 'Unauthorized' })
+    return
+  }
+
+  const body: unknown = request.body
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    response.status(400).json({ error: 'Invalid task order' })
+    return
+  }
+  const input = body as Record<string, unknown>
+  const status = input.status
+  const ids = input.ids
+  if ((status !== 'todo' && status !== 'in_progress' && status !== 'completed') ||
+      !Array.isArray(ids) || ids.length < 1 ||
+      !ids.every((id) => Number.isSafeInteger(id) && id > 0) ||
+      new Set(ids).size !== ids.length) {
+    response.status(400).json({ error: 'Invalid task order' })
+    return
+  }
+
+  try {
+    const prisma = getPrisma()
+    const tasks = await prisma.task.findMany({
+      where: { createdById: userId, status },
+      select: { id: true },
+    })
+    if (tasks.length !== ids.length || tasks.some((task) => !ids.includes(task.id))) {
+      response.status(409).json({ error: 'Task list changed. Reload and try again.' })
+      return
+    }
+    await prisma.$transaction(ids.map((id, orderIndex) => prisma.task.update({
+      where: { id, createdById: userId, status },
+      data: { orderIndex },
+    })))
+    response.sendStatus(204)
+  } catch (error) {
+    if (isMissingTask(error)) {
+      response.status(409).json({ error: 'Task list changed. Reload and try again.' })
+      return
+    }
+    console.error('Could not reorder tasks', error)
+    response.status(503).json({ error: 'Task order could not be saved' })
   }
 })
 
@@ -132,6 +190,7 @@ taskRoutes.patch('/:id', async (request, response) => {
     priority?: 'low' | 'medium' | 'high'
     dueDate?: Date | null
     completedAt?: Date | null
+    orderIndex?: number
   } = {}
   if (typeof title === 'string') changes.title = title.trim()
   if (description === null || typeof description === 'string') changes.description = description?.trim() || null
@@ -147,6 +206,7 @@ taskRoutes.patch('/:id', async (request, response) => {
       return
     }
     if (changes.status && changes.status !== current.status) {
+      changes.orderIndex = await nextOrderIndex(userId, changes.status)
       changes.completedAt = changes.status === 'completed' ? new Date() : null
     }
     const task = await prisma.task.update({ where: { id, createdById: userId }, data: changes })

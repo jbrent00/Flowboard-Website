@@ -58,6 +58,14 @@ export async function updateTask(token, id, changes) {
   return fromApi(saved)
 }
 
+export function reorderTasks(token, status, ids) {
+  return taskRequest(token, '/order', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toApi({ status, ids })),
+  })
+}
+
 export function deleteTask(token, id) {
   return taskRequest(token, `/${id}`, { method: 'DELETE' })
 }
