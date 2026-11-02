@@ -1,8 +1,26 @@
 import { getAuth } from '@clerk/express'
 import { Router } from 'express'
+import type { Task } from './generated/prisma/client.js'
 import { getPrisma } from './prisma.js'
 
 export const taskRoutes = Router()
+
+const tagInclude = { taskTags: { include: { tag: { select: { id: true, name: true, color: true } } } } } as const
+
+function taskResponse(task: Task & { taskTags: Array<{ tag: { id: number; name: string; color: string } }> }) {
+  const { taskTags, ...fields } = task
+  return { ...fields, tags: taskTags.map(({ tag }) => tag) }
+}
+
+function parseTagIds(value: unknown): number[] | null {
+  if (!Array.isArray(value) || !value.every((id) => Number.isSafeInteger(id) && id > 0) ||
+      new Set(value).size !== value.length) return null
+  return value
+}
+
+async function ownsTags(userId: string, tagIds: number[]) {
+  return await getPrisma().tag.count({ where: { userId, id: { in: tagIds } } }) === tagIds.length
+}
 
 function parseDueDate(value: unknown): Date | null | undefined {
   if (value === null) return null
@@ -35,8 +53,9 @@ taskRoutes.get('/', async (request, response) => {
     const tasks = await getPrisma().task.findMany({
       where: { createdById: userId },
       orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      include: tagInclude,
     })
-    response.json(tasks)
+    response.json(tasks.map(taskResponse))
   } catch (error) {
     console.error('Could not load tasks', error)
     response.status(503).json({ error: 'Tasks could not be loaded' })
@@ -63,17 +82,22 @@ taskRoutes.post('/', async (request, response) => {
   const priority = input.priority ?? 'low'
   const dueDate = input.dueDate ?? null
   const parsedDueDate = parseDueDate(dueDate)
+  const tagIds = parseTagIds(input.tagIds ?? [])
 
   if (typeof title !== 'string' || !title.trim() || title.trim().length > 100 ||
       typeof description !== 'string' || description.trim().length > 500 ||
       (status !== 'todo' && status !== 'in_progress' && status !== 'completed') ||
       (priority !== 'low' && priority !== 'medium' && priority !== 'high') ||
-      parsedDueDate === undefined) {
+      parsedDueDate === undefined || tagIds === null) {
     response.status(400).json({ error: 'Invalid task details' })
     return
   }
 
   try {
+    if (!await ownsTags(userId, tagIds)) {
+      response.status(400).json({ error: 'Tags are invalid' })
+      return
+    }
     const orderIndex = await nextOrderIndex(userId, status)
     const task = await getPrisma().task.create({
       data: {
@@ -87,9 +111,11 @@ taskRoutes.post('/', async (request, response) => {
         createdBy: {
           connectOrCreate: { where: { id: userId }, create: { id: userId } },
         },
+        taskTags: { create: tagIds.map((tagId) => ({ tagId })) },
       },
+      include: tagInclude,
     })
-    response.status(201).json(task)
+    response.status(201).json(taskResponse(task))
   } catch (error) {
     console.error('Could not create task', error)
     response.status(503).json({ error: 'Task could not be saved' })
@@ -162,7 +188,7 @@ taskRoutes.patch('/:id', async (request, response) => {
     return
   }
   const input = body as Record<string, unknown>
-  const allowed = ['title', 'description', 'status', 'priority', 'dueDate']
+  const allowed = ['title', 'description', 'status', 'priority', 'dueDate', 'tagIds']
   if (Object.keys(input).length === 0 || Object.keys(input).some((key) => !allowed.includes(key))) {
     response.status(400).json({ error: 'Invalid task details' })
     return
@@ -173,12 +199,13 @@ taskRoutes.patch('/:id', async (request, response) => {
   const status = input.status
   const priority = input.priority
   const dueDate = 'dueDate' in input ? parseDueDate(input.dueDate) : undefined
+  const tagIds = 'tagIds' in input ? parseTagIds(input.tagIds) : undefined
   if (('title' in input && (typeof title !== 'string' || !title.trim() || title.trim().length > 100)) ||
       ('description' in input && description !== null &&
         (typeof description !== 'string' || description.trim().length > 500)) ||
       ('status' in input && status !== 'todo' && status !== 'in_progress' && status !== 'completed') ||
       ('priority' in input && priority !== 'low' && priority !== 'medium' && priority !== 'high') ||
-      ('dueDate' in input && dueDate === undefined)) {
+      ('dueDate' in input && dueDate === undefined) || tagIds === null) {
     response.status(400).json({ error: 'Invalid task details' })
     return
   }
@@ -205,12 +232,23 @@ taskRoutes.patch('/:id', async (request, response) => {
       response.status(404).json({ error: 'Task not found' })
       return
     }
+    if (tagIds && !await ownsTags(userId, tagIds)) {
+      response.status(400).json({ error: 'Tags are invalid' })
+      return
+    }
     if (changes.status && changes.status !== current.status) {
       changes.orderIndex = await nextOrderIndex(userId, changes.status)
       changes.completedAt = changes.status === 'completed' ? new Date() : null
     }
-    const task = await prisma.task.update({ where: { id, createdById: userId }, data: changes })
-    response.json(task)
+    const task = await prisma.task.update({
+      where: { id, createdById: userId },
+      data: {
+        ...changes,
+        ...(tagIds ? { taskTags: { deleteMany: {}, create: tagIds.map((tagId) => ({ tagId })) } } : {}),
+      },
+      include: tagInclude,
+    })
+    response.json(taskResponse(task))
   } catch (error) {
     if (isMissingTask(error)) {
       response.status(404).json({ error: 'Task not found' })

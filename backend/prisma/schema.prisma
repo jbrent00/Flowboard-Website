@@ -16,6 +16,7 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   tasksCreated Task[]
+  tags         Tag[]
 }
 
 model Task {
@@ -31,8 +32,31 @@ model Task {
   updatedAt   DateTime     @updatedAt
   createdById String
   createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  taskTags    TaskTag[]
 
   @@index([createdById, status, orderIndex])
+}
+
+model Tag {
+  id             Int       @id @default(autoincrement())
+  name           String
+  normalizedName String
+  color          String
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskTags       TaskTag[]
+
+  @@unique([userId, normalizedName])
+}
+
+model TaskTag {
+  taskId Int
+  tagId  Int
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+  @@index([tagId])
 }
 
 enum TaskStatus {

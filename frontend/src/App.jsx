@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import styles from './App.module.css'
 import { createTask, deleteTask as removeTask, listTasks, reorderTasks, updateTask } from './taskApi.js'
+import { createTag, deleteTag, listTags, updateTag } from './tagApi.js'
+import TagManager, { TagChoices } from './TagManager.jsx'
 
 const statuses = [
   { id: 'todo', label: 'To do' },
@@ -9,6 +11,41 @@ const statuses = [
 ]
 
 const priorities = ['low', 'medium', 'high']
+const priorityRank = { high: 0, medium: 1, low: 2 }
+const byTagName = (first, second) => first.name.localeCompare(second.name)
+
+function localDateKey(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function matchesDateView(task, view, todayKey, weekKey) {
+  if (view === 'all') return true
+  if (task.status === 'completed') return false
+  const dueKey = task.dueDate.slice(0, 10)
+  if (view === 'today') return dueKey === todayKey
+  if (view === 'upcoming') return dueKey > todayKey && dueKey <= weekKey
+  if (view === 'overdue') return Boolean(dueKey) && dueKey < todayKey
+  return !dueKey
+}
+
+function compareTasks(first, second, sortBy) {
+  if (sortBy === 'manual') return first.orderIndex - second.orderIndex ||
+    first.createdAt.localeCompare(second.createdAt) || first.id - second.id
+
+  const byTitle = first.title.localeCompare(second.title, undefined, { sensitivity: 'base' })
+  if (sortBy === 'title') return byTitle || first.id - second.id
+
+  const byPriority = priorityRank[first.priority] - priorityRank[second.priority]
+  if (sortBy === 'priority') return byPriority || byTitle || first.id - second.id
+
+  if (!first.dueDate && second.dueDate) return 1
+  if (first.dueDate && !second.dueDate) return -1
+  return (first.dueDate || '').localeCompare(second.dueDate || '') ||
+    byPriority || byTitle || first.id - second.id
+}
 
 function validateTask(title, description, dueDate) {
   if (!title.trim()) return { field: 'title', message: 'Enter a task title.' }
@@ -22,6 +59,7 @@ function validateTask(title, description, dueDate) {
 
 export default function App({ getToken }) {
   const [tasks, setTasks] = useState([])
+  const [tags, setTags] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [loadAttempt, setLoadAttempt] = useState(0)
@@ -30,10 +68,18 @@ export default function App({ getToken }) {
   const [busyId, setBusyId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
   const [dropTarget, setDropTarget] = useState('')
+  const [query, setQuery] = useState('')
+  const [sortBy, setSortBy] = useState('manual')
+  const [dateView, setDateView] = useState('all')
+  const [today, setToday] = useState(() => new Date())
+  const [priorityFilters, setPriorityFilters] = useState([])
+  const [statusFilters, setStatusFilters] = useState([])
+  const [tagFilters, setTagFilters] = useState([])
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('low')
   const [dueDate, setDueDate] = useState('')
+  const [selectedTagIds, setSelectedTagIds] = useState([])
   const [error, setError] = useState('')
   const [errorField, setErrorField] = useState('')
   const [editingId, setEditingId] = useState(null)
@@ -41,11 +87,42 @@ export default function App({ getToken }) {
   const [editDescription, setEditDescription] = useState('')
   const [editPriority, setEditPriority] = useState('low')
   const [editDueDate, setEditDueDate] = useState('')
+  const [editTagIds, setEditTagIds] = useState([])
   const [editError, setEditError] = useState('')
   const [editErrorField, setEditErrorField] = useState('')
   const statusFocusId = useRef(null)
   const editInputFocusId = useRef(null)
   const editReturnFocusId = useRef(null)
+  const searchTerm = query.trim().toLowerCase()
+  const hasFilters = Boolean(searchTerm || priorityFilters.length || statusFilters.length || tagFilters.length)
+  const isFiltered = hasFilters || dateView !== 'all'
+  const todayKey = localDateKey(today)
+  const weekKey = localDateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7))
+  const visibleTasks = isFiltered
+    ? tasks.filter((task) =>
+      matchesDateView(task, dateView, todayKey, weekKey) &&
+      (!searchTerm || `${task.title} ${task.description}`.toLowerCase().includes(searchTerm)) &&
+      (!priorityFilters.length || priorityFilters.includes(task.priority)) &&
+      (!statusFilters.length || statusFilters.includes(task.status)) &&
+      (!tagFilters.length || task.tags.some((tag) => tagFilters.includes(tag.id))))
+    : tasks
+  const canDrag = !isFiltered && sortBy === 'manual'
+  const dragHint = canDrag ? 'Drag cards between columns or use their Status menus.'
+    : 'To drag cards, show All tasks, choose Manual order, and clear search and filters. Status menus still work.'
+
+  useEffect(() => {
+    let timeoutId
+    function scheduleMidnight() {
+      const now = new Date()
+      const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+      timeoutId = window.setTimeout(() => {
+        setToday(new Date())
+        scheduleMidnight()
+      }, tomorrow.getTime() - now.getTime() + 1000)
+    }
+    scheduleMidnight()
+    return () => window.clearTimeout(timeoutId)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -53,10 +130,14 @@ export default function App({ getToken }) {
       setLoading(true)
       setLoadError('')
       try {
-        const saved = await listTasks(await getToken())
-        if (active) setTasks(saved)
+        const token = await getToken()
+        const [savedTasks, savedTags] = await Promise.all([listTasks(token), listTags(token)])
+        if (active) {
+          setTasks(savedTasks)
+          setTags(savedTags)
+        }
       } catch {
-        if (active) setLoadError('Tasks could not be loaded. Check your connection and try again.')
+        if (active) setLoadError('Board data could not be loaded. Check your connection and try again.')
       } finally {
         if (active) setLoading(false)
       }
@@ -67,7 +148,7 @@ export default function App({ getToken }) {
 
   async function handleAddTask(event) {
     event.preventDefault()
-    if (saving) return
+    if (saving || busyId !== null) return
     const validation = validateTask(title, description, dueDate)
     if (validation) {
       setError(validation.message)
@@ -79,12 +160,14 @@ export default function App({ getToken }) {
     try {
       const saved = await createTask(await getToken(), {
         title: title.trim(), description: description.trim(), status: 'todo', priority, dueDate,
+        tagIds: selectedTagIds,
       })
       setTasks((current) => [...current, saved])
       setTitle('')
       setDescription('')
       setPriority('low')
       setDueDate('')
+      setSelectedTagIds([])
       setError('')
       setErrorField('')
       setBoardError('')
@@ -103,6 +186,7 @@ export default function App({ getToken }) {
     setEditDescription(task.description || '')
     setEditPriority(task.priority)
     setEditDueDate(task.dueDate)
+    setEditTagIds(task.tags.map((tag) => tag.id))
     setEditError('')
     setEditErrorField('')
   }
@@ -128,7 +212,7 @@ export default function App({ getToken }) {
     try {
       const saved = await updateTask(await getToken(), editingId, {
         title: editTitle.trim(), description: editDescription.trim(),
-        priority: editPriority, dueDate: editDueDate,
+        priority: editPriority, dueDate: editDueDate, tagIds: editTagIds,
       })
       setTasks((current) => current.map((task) => task.id === editingId ? saved : task))
       setBoardError('')
@@ -159,15 +243,48 @@ export default function App({ getToken }) {
     }
   }
 
+  async function addTag(name, color) {
+    const saved = await createTag(await getToken(), name, color)
+    setTags((current) => [...current, saved].sort(byTagName))
+  }
+
+  async function editTag(id, name, color) {
+    const saved = await updateTag(await getToken(), id, name, color)
+    setTags((current) => current.map((tag) => tag.id === id ? saved : tag).sort(byTagName))
+    setTasks((current) => current.map((task) => ({
+      ...task, tags: task.tags.map((tag) => tag.id === id ? saved : tag),
+    })))
+  }
+
+  async function removeTag(id) {
+    await deleteTag(await getToken(), id)
+    setTags((current) => current.filter((tag) => tag.id !== id))
+    setTasks((current) => current.map((task) => ({
+      ...task, tags: task.tags.filter((tag) => tag.id !== id),
+    })))
+    setSelectedTagIds((current) => current.filter((tagId) => tagId !== id))
+    setEditTagIds((current) => current.filter((tagId) => tagId !== id))
+    setTagFilters((current) => current.filter((tagId) => tagId !== id))
+  }
+
   async function changeStatus(taskId, newStatus) {
-    if (busyId !== null) return
+    const previous = tasks.find((item) => item.id === taskId)
+    if (!previous || previous.status === newStatus || busyId !== null || saving) return
+    const lastIndex = tasks.filter((item) => item.status === newStatus)
+      .reduce((max, item) => Math.max(max, item.orderIndex), -1)
     setBusyId(taskId)
+    const staysVisible = (!statusFilters.length || statusFilters.includes(newStatus)) &&
+      matchesDateView({ ...previous, status: newStatus }, dateView, todayKey, weekKey)
+    statusFocusId.current = staysVisible ? taskId : null
+    setTasks((current) => current.map((item) => item.id === taskId
+      ? { ...item, status: newStatus, orderIndex: lastIndex + 1 } : item))
     try {
       const saved = await updateTask(await getToken(), taskId, { status: newStatus })
-      statusFocusId.current = taskId
       setTasks((current) => current.map((task) => task.id === taskId ? saved : task))
       setBoardError('')
     } catch {
+      statusFocusId.current = taskId
+      setTasks((current) => current.map((item) => item.id === taskId ? previous : item))
       setBoardError('Task status could not be saved. Please try again.')
     } finally {
       setBusyId(null)
@@ -176,7 +293,7 @@ export default function App({ getToken }) {
 
   async function reorderColumn(taskId, targetId = null, after = false) {
     const task = tasks.find((item) => item.id === taskId)
-    if (!task || busyId !== null) return
+    if (!task || busyId !== null || saving || !canDrag) return
     const column = tasks.filter((item) => item.status === task.status)
       .sort((a, b) => a.orderIndex - b.orderIndex ||
         a.createdAt.localeCompare(b.createdAt) || a.id - b.id)
@@ -186,14 +303,17 @@ export default function App({ getToken }) {
     ids.splice(targetIndex + Number(after), 0, taskId)
     if (ids.every((id, index) => id === column[index].id)) return
 
+    const previousOrder = new Map(column.map((item) => [item.id, item.orderIndex]))
     setBusyId(taskId)
+    setTasks((current) => current.map((item) => previousOrder.has(item.id)
+      ? { ...item, orderIndex: ids.indexOf(item.id) } : item))
     try {
       await reorderTasks(await getToken(), task.status, ids)
-      setTasks((current) => current.map((item) => item.status === task.status && ids.includes(item.id)
-        ? { ...item, orderIndex: ids.indexOf(item.id) } : item))
       setBoardError('')
     } catch {
-      setBoardError('Task order could not be saved. Reload and try again.')
+      setTasks((current) => current.map((item) => previousOrder.has(item.id)
+        ? { ...item, orderIndex: previousOrder.get(item.id) } : item))
+      setBoardError('Task order could not be saved. Previous order restored. Please try again.')
     } finally {
       setBusyId(null)
     }
@@ -208,14 +328,14 @@ export default function App({ getToken }) {
     event.preventDefault()
     const task = tasks.find((item) => item.id === draggedId)
     clearDrag()
-    if (!task || busyId !== null) return
+    if (!task || busyId !== null || saving || !canDrag) return
     if (task.status === status) reorderColumn(task.id)
     else changeStatus(task.id, status)
   }
 
   function dropOnCard(event, target) {
     const task = tasks.find((item) => item.id === draggedId)
-    if (!task || task.status !== target.status) return
+    if (!task || task.status !== target.status || !canDrag) return
     event.preventDefault()
     event.stopPropagation()
     const box = event.currentTarget.getBoundingClientRect()
@@ -284,24 +404,93 @@ export default function App({ getToken }) {
           onChange={(event) => { setDueDate(event.target.value); setError(''); setErrorField('') }}
         />
         {dueDate && <button type="button" onClick={() => setDueDate('')}>Clear due date</button>}
-        <button type="submit" disabled={saving}>{saving ? 'Adding task...' : 'Add task'}</button>
+        <TagChoices tags={tags} selectedIds={selectedTagIds} onChange={setSelectedTagIds} />
+        <button type="submit" disabled={saving || busyId !== null}>{saving ? 'Adding task...' : 'Add task'}</button>
         {error && <p className={styles.error} id="task-form-error" role="alert">{error}</p>}
       </form>
 
+      <TagManager tags={tags} onCreate={addTag} onUpdate={editTag} onDelete={removeTag} />
+
+      <label className={styles.dateView} htmlFor="task-view">
+        Task view
+        <select id="task-view" value={dateView} onChange={(event) => setDateView(event.target.value)}>
+          <option value="all">All tasks</option>
+          <option value="today">Due today</option>
+          <option value="upcoming">Next 7 days</option>
+          <option value="overdue">Overdue</option>
+          <option value="unscheduled">No due date</option>
+        </select>
+      </label>
+      <p className={styles.viewHint}>Date views show open tasks using your local date.</p>
+      <label className={styles.search} htmlFor="task-search">
+        Search tasks
+        <input id="task-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search titles and descriptions" />
+      </label>
+      <label className={styles.sortControl} htmlFor="task-sort">
+        Sort by
+        <select id="task-sort" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+          <option value="manual">Manual order</option>
+          <option value="priority">Priority (high first)</option>
+          <option value="dueDate">Due date (soonest first)</option>
+          <option value="title">Title (A to Z)</option>
+        </select>
+      </label>
+      <section className={styles.filters} aria-label="Task filters">
+        <fieldset className={styles.filterGroup}>
+          <legend>Priority</legend>
+          {['high', 'medium', 'low'].map((option) => (
+            <label key={option}>
+              <input type="checkbox" checked={priorityFilters.includes(option)} onChange={() =>
+                setPriorityFilters((current) => current.includes(option)
+                  ? current.filter((value) => value !== option) : [...current, option])} />
+              {option[0].toUpperCase() + option.slice(1)}
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className={styles.filterGroup}>
+          <legend>Status</legend>
+          {statuses.map((option) => (
+            <label key={option.id}>
+              <input type="checkbox" checked={statusFilters.includes(option.id)} onChange={() =>
+                setStatusFilters((current) => current.includes(option.id)
+                  ? current.filter((value) => value !== option.id) : [...current, option.id])} />
+              {option.label}
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className={styles.filterGroup}>
+          <legend>Tags (match any)</legend>
+          {tags.length ? tags.map((tag) => (
+            <label key={tag.id}>
+              <input type="checkbox" checked={tagFilters.includes(tag.id)} onChange={() =>
+                setTagFilters((current) => current.includes(tag.id)
+                  ? current.filter((id) => id !== tag.id) : [...current, tag.id])} />
+              <span className={`${styles.tagBadge} ${styles[`tag_${tag.color}`]}`}>{tag.name}</span>
+            </label>
+          )) : <span className={styles.tagHint}>No tags yet.</span>}
+        </fieldset>
+        {hasFilters && <button className={styles.clearFilters} type="button" onClick={() => {
+          setQuery('')
+          setPriorityFilters([])
+          setStatusFilters([])
+          setTagFilters([])
+        }}>Clear filters</button>}
+      </section>
+      {isFiltered && tasks.length > 0 && <p className={styles.boardEmpty} role="status">Showing {visibleTasks.length} {visibleTasks.length === 1 ? 'task' : 'tasks'} of {tasks.length}.</p>}
       {tasks.length === 0 && <p className={styles.boardEmpty}>Your board is empty. Add a task above to get started.</p>}
-      <p className={styles.dragHint}>Drag cards between columns or use their Status menus.</p>
+      {isFiltered && tasks.length > 0 && visibleTasks.length === 0 && <p className={styles.boardEmpty}>No matching tasks. Try another search, filter, or view.</p>}
+      <p className={styles.dragHint}>{dragHint}</p>
       <section className={styles.board} aria-label="Task board">
         {statuses.map((status) => {
-          const columnTasks = tasks
+          const columnTasks = visibleTasks
             .filter((task) => task.status === status.id)
-            .sort((a, b) => a.orderIndex - b.orderIndex ||
-              a.createdAt.localeCompare(b.createdAt) || a.id - b.id)
+            .sort((a, b) => compareTasks(a, b, sortBy))
 
           return (
             <section className={`${styles.column} ${dropTarget === status.id ? styles.dropColumn : ''}`}
               key={status.id} aria-labelledby={status.id}
               onDragOver={(event) => {
-                if (draggedId === null || busyId !== null) return
+                if (draggedId === null || busyId !== null || saving || !canDrag) return
                 event.preventDefault()
                 event.dataTransfer.dropEffect = 'move'
                 if (dropTarget !== status.id) setDropTarget(status.id)
@@ -314,7 +503,7 @@ export default function App({ getToken }) {
                     <li className={`${styles.task} ${draggedId === task.id ? styles.dragging : ''}
                       ${dropTarget === `before-${task.id}` ? styles.dropBefore : ''}
                       ${dropTarget === `after-${task.id}` ? styles.dropAfter : ''}`}
-                      key={task.id} draggable={editingId !== task.id && busyId === null}
+                      key={task.id} draggable={editingId !== task.id && busyId === null && !saving && canDrag}
                       onDragStart={(event) => {
                         event.dataTransfer.setData('text/plain', String(task.id))
                         event.dataTransfer.effectAllowed = 'move'
@@ -323,7 +512,7 @@ export default function App({ getToken }) {
                       onDragEnd={clearDrag}
                       onDragOver={(event) => {
                         const source = tasks.find((item) => item.id === draggedId)
-                        if (!source || source.status !== task.status || source.id === task.id) return
+                        if (!source || source.status !== task.status || source.id === task.id || !canDrag) return
                         event.preventDefault()
                         event.dataTransfer.dropEffect = 'move'
                         event.stopPropagation()
@@ -380,6 +569,7 @@ export default function App({ getToken }) {
                             onChange={(event) => { setEditDueDate(event.target.value); setEditError(''); setEditErrorField('') }}
                           />
                           {editDueDate && <button className={styles.cardAction} type="button" onClick={() => setEditDueDate('')}>Clear due date</button>}
+                          <TagChoices tags={tags} selectedIds={editTagIds} onChange={setEditTagIds} />
                           {editError && <p className={styles.error} id={`edit-error-${task.id}`} role="alert">{editError}</p>}
                           <div className={styles.editActions}>
                             <button type="submit" disabled={busyId !== null}>{busyId === task.id ? 'Saving...' : 'Save'}</button>
@@ -390,6 +580,9 @@ export default function App({ getToken }) {
                         <>
                           <strong>{task.title}</strong>
                           {task.description && <p className={styles.description}>{task.description}</p>}
+                          {task.tags.length > 0 && <div className={styles.cardTags} aria-label="Tags">
+                            {task.tags.map((tag) => <span className={`${styles.tagBadge} ${styles[`tag_${tag.color}`]}`} key={tag.id}>{tag.name}</span>)}
+                          </div>}
                           <p className={styles.metadata}>Priority: <span className={styles.priority}>{task.priority}</span></p>
                           <p className={styles.metadata}>
                             {task.dueDate ? (
@@ -403,7 +596,7 @@ export default function App({ getToken }) {
                               aria-label={`Status for ${task.title}`}
                               value={task.status}
                               onChange={(event) => changeStatus(task.id, event.target.value)}
-                              disabled={busyId !== null}
+                              disabled={busyId !== null || saving}
                               ref={(select) => {
                                 // Moving columns remounts the card, so restore focus to its control.
                                 if (select && statusFocusId.current === task.id) {
@@ -440,7 +633,7 @@ export default function App({ getToken }) {
                   ))}
                 </ul>
               ) : (
-                <p className={styles.empty}>No tasks in this status</p>
+                <p className={styles.empty}>{isFiltered ? 'No matching tasks in this status' : 'No tasks in this status'}</p>
               )}
             </section>
           )
