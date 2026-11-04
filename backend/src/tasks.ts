@@ -2,14 +2,36 @@ import { getAuth } from '@clerk/express'
 import { Router } from 'express'
 import type { Task } from './generated/prisma/client.js'
 import { getPrisma } from './prisma.js'
+import { checklistRoutes } from './checklist.js'
 
 export const taskRoutes = Router()
+taskRoutes.use('/:taskId/checklist-items', checklistRoutes)
 
-const tagInclude = { taskTags: { include: { tag: { select: { id: true, name: true, color: true } } } } } as const
+const taskInclude = {
+  taskTags: { include: { tag: { select: { id: true, name: true, color: true } } } },
+  checklistItems: { orderBy: { orderIndex: 'asc' } },
+} as const
 
-function taskResponse(task: Task & { taskTags: Array<{ tag: { id: number; name: string; color: string } }> }) {
+function taskResponse(task: Task & {
+  taskTags: Array<{ tag: { id: number; name: string; color: string } }>
+  checklistItems: Array<{ id: number; text: string; completed: boolean; orderIndex: number }>
+}) {
   const { taskTags, ...fields } = task
   return { ...fields, tags: taskTags.map(({ tag }) => tag) }
+}
+
+function parseChecklistItems(value: unknown): Array<{ text: string }> | null {
+  if (!Array.isArray(value) || value.length > 100) return null
+  const items: Array<{ text: string }> = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+    const input = item as Record<string, unknown>
+    if (Object.keys(input).length !== 1 || typeof input.text !== 'string') return null
+    const text = input.text.trim()
+    if (!text || text.length > 200) return null
+    items.push({ text })
+  }
+  return items
 }
 
 function parseTagIds(value: unknown): number[] | null {
@@ -53,7 +75,7 @@ taskRoutes.get('/', async (request, response) => {
     const tasks = await getPrisma().task.findMany({
       where: { createdById: userId },
       orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      include: tagInclude,
+      include: taskInclude,
     })
     response.json(tasks.map(taskResponse))
   } catch (error) {
@@ -83,12 +105,13 @@ taskRoutes.post('/', async (request, response) => {
   const dueDate = input.dueDate ?? null
   const parsedDueDate = parseDueDate(dueDate)
   const tagIds = parseTagIds(input.tagIds ?? [])
+  const checklistItems = 'checklistItems' in input ? parseChecklistItems(input.checklistItems) : []
 
   if (typeof title !== 'string' || !title.trim() || title.trim().length > 100 ||
       typeof description !== 'string' || description.trim().length > 500 ||
       (status !== 'todo' && status !== 'in_progress' && status !== 'completed') ||
       (priority !== 'low' && priority !== 'medium' && priority !== 'high') ||
-      parsedDueDate === undefined || tagIds === null) {
+      parsedDueDate === undefined || tagIds === null || checklistItems === null) {
     response.status(400).json({ error: 'Invalid task details' })
     return
   }
@@ -112,8 +135,11 @@ taskRoutes.post('/', async (request, response) => {
           connectOrCreate: { where: { id: userId }, create: { id: userId } },
         },
         taskTags: { create: tagIds.map((tagId) => ({ tagId })) },
+        checklistItems: { create: checklistItems.map((item, orderIndex) => ({
+          text: item.text, orderIndex,
+        })) },
       },
-      include: tagInclude,
+      include: taskInclude,
     })
     response.status(201).json(taskResponse(task))
   } catch (error) {
@@ -246,7 +272,7 @@ taskRoutes.patch('/:id', async (request, response) => {
         ...changes,
         ...(tagIds ? { taskTags: { deleteMany: {}, create: tagIds.map((tagId) => ({ tagId })) } } : {}),
       },
-      include: tagInclude,
+      include: taskInclude,
     })
     response.json(taskResponse(task))
   } catch (error) {

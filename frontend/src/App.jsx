@@ -3,6 +3,7 @@ import styles from './App.module.css'
 import { createTask, deleteTask as removeTask, listTasks, reorderTasks, updateTask } from './taskApi.js'
 import { createTag, deleteTag, listTags, updateTag } from './tagApi.js'
 import TagManager, { TagChoices } from './TagManager.jsx'
+import Checklist from './Checklist.jsx'
 
 const statuses = [
   { id: 'todo', label: 'To do' },
@@ -91,6 +92,7 @@ export default function App({ getToken }) {
   const [editError, setEditError] = useState('')
   const [editErrorField, setEditErrorField] = useState('')
   const statusFocusId = useRef(null)
+  const moveFocus = useRef(null)
   const editInputFocusId = useRef(null)
   const editReturnFocusId = useRef(null)
   const searchTerm = query.trim().toLowerCase()
@@ -107,8 +109,8 @@ export default function App({ getToken }) {
       (!tagFilters.length || task.tags.some((tag) => tagFilters.includes(tag.id))))
     : tasks
   const canDrag = !isFiltered && sortBy === 'manual'
-  const dragHint = canDrag ? 'Drag cards between columns or use their Status menus.'
-    : 'To drag cards, show All tasks, choose Manual order, and clear search and filters. Status menus still work.'
+  const dragHint = canDrag ? 'Drag cards between columns, use Move up and Move down, or choose a Status.'
+    : 'To reorder cards, show All tasks, choose Manual order, and clear search and filters. Status menus still work.'
 
   useEffect(() => {
     let timeoutId
@@ -319,6 +321,15 @@ export default function App({ getToken }) {
     }
   }
 
+  function restoreMoveFocus(actions, taskId) {
+    if (!actions || moveFocus.current?.id !== taskId || busyId !== null) return
+    const buttons = [...actions.querySelectorAll('button')]
+    const preferred = buttons[moveFocus.current.direction === 'up' ? 0 : 1]
+    const target = preferred.disabled ? buttons.find((button) => !button.disabled) : preferred
+    target?.focus()
+    moveFocus.current = null
+  }
+
   function clearDrag() {
     setDraggedId(null)
     setDropTarget('')
@@ -362,6 +373,7 @@ export default function App({ getToken }) {
       {boardError && <p className={styles.error} role="alert">{boardError}</p>}
 
       <form className={styles.addForm} onSubmit={handleAddTask}>
+        <h2>Add a task</h2>
         <label htmlFor="task-title">Task title</label>
         <div className={styles.addControls}>
           <input
@@ -388,22 +400,28 @@ export default function App({ getToken }) {
           aria-describedby={errorField === 'description' ? 'task-form-error' : undefined}
           onChange={(event) => { setDescription(event.target.value); setError(''); setErrorField('') }}
         />
-        <label className={styles.extraLabel} htmlFor="task-priority">Priority</label>
-        <select id="task-priority" value={priority} onChange={(event) => setPriority(event.target.value)}>
-          {priorities.map((option) => (
-            <option key={option} value={option}>{option[0].toUpperCase() + option.slice(1)}</option>
-          ))}
-        </select>
-        <label className={styles.extraLabel} htmlFor="task-due-date">Due date and time (optional)</label>
-        <input
-          id="task-due-date"
-          type="datetime-local"
-          value={dueDate}
-          aria-invalid={errorField === 'dueDate'}
-          aria-describedby={errorField === 'dueDate' ? 'task-form-error' : undefined}
-          onChange={(event) => { setDueDate(event.target.value); setError(''); setErrorField('') }}
-        />
-        {dueDate && <button type="button" onClick={() => setDueDate('')}>Clear due date</button>}
+        <div className={styles.formRow}>
+          <div>
+            <label className={styles.extraLabel} htmlFor="task-priority">Priority</label>
+            <select id="task-priority" value={priority} onChange={(event) => setPriority(event.target.value)}>
+              {priorities.map((option) => (
+                <option key={option} value={option}>{option[0].toUpperCase() + option.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={styles.extraLabel} htmlFor="task-due-date">Due date and time (optional)</label>
+            <input
+              id="task-due-date"
+              type="datetime-local"
+              value={dueDate}
+              aria-invalid={errorField === 'dueDate'}
+              aria-describedby={errorField === 'dueDate' ? 'task-form-error' : undefined}
+              onChange={(event) => { setDueDate(event.target.value); setError(''); setErrorField('') }}
+            />
+            {dueDate && <button type="button" onClick={() => setDueDate('')}>Clear due date</button>}
+          </div>
+        </div>
         <TagChoices tags={tags} selectedIds={selectedTagIds} onChange={setSelectedTagIds} />
         <button type="submit" disabled={saving || busyId !== null}>{saving ? 'Adding task...' : 'Add task'}</button>
         {error && <p className={styles.error} id="task-form-error" role="alert">{error}</p>}
@@ -499,7 +517,7 @@ export default function App({ getToken }) {
               <h2 id={status.id} tabIndex={-1}>{status.label}</h2>
               {columnTasks.length > 0 ? (
                 <ul className={styles.tasks}>
-                  {columnTasks.map((task) => (
+                  {columnTasks.map((task, index) => (
                     <li className={`${styles.task} ${draggedId === task.id ? styles.dragging : ''}
                       ${dropTarget === `before-${task.id}` ? styles.dropBefore : ''}
                       ${dropTarget === `after-${task.id}` ? styles.dropAfter : ''}`}
@@ -523,7 +541,12 @@ export default function App({ getToken }) {
                       }}
                       onDrop={(event) => dropOnCard(event, task)}>
                       {editingId === task.id ? (
-                        <form className={styles.editForm} onSubmit={saveEdit}>
+                        <form className={styles.editForm} onSubmit={saveEdit} onKeyDown={(event) => {
+                          if (event.key === 'Escape' && busyId === null) {
+                            event.preventDefault()
+                            stopEditing()
+                          }
+                        }}>
                           <label htmlFor={`edit-title-${task.id}`}>Task title</label>
                           <input
                             id={`edit-title-${task.id}`}
@@ -578,17 +601,19 @@ export default function App({ getToken }) {
                         </form>
                       ) : (
                         <>
-                          <strong>{task.title}</strong>
+                          <h3 className={styles.taskTitle}>{task.title}</h3>
                           {task.description && <p className={styles.description}>{task.description}</p>}
                           {task.tags.length > 0 && <div className={styles.cardTags} aria-label="Tags">
                             {task.tags.map((tag) => <span className={`${styles.tagBadge} ${styles[`tag_${tag.color}`]}`} key={tag.id}>{tag.name}</span>)}
                           </div>}
-                          <p className={styles.metadata}>Priority: <span className={styles.priority}>{task.priority}</span></p>
-                          <p className={styles.metadata}>
-                            {task.dueDate ? (
-                              <>Due: <time dateTime={task.dueDate}>{new Date(task.dueDate).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time></>
-                            ) : 'No due date'}
-                          </p>
+                          <div className={styles.taskMeta}>
+                            <p className={styles.metadata}>Priority: <span className={styles.priority}>{task.priority}</span></p>
+                            <p className={styles.metadata}>
+                              {task.dueDate ? (
+                                <>Due: <time dateTime={task.dueDate}>{new Date(task.dueDate).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time></>
+                              ) : 'No due date'}
+                            </p>
+                          </div>
                           <label className={styles.statusControl} htmlFor={`status-${task.id}`}>
                             Status
                             <select
@@ -599,7 +624,7 @@ export default function App({ getToken }) {
                               disabled={busyId !== null || saving}
                               ref={(select) => {
                                 // Moving columns remounts the card, so restore focus to its control.
-                                if (select && statusFocusId.current === task.id) {
+                                if (select && !select.disabled && statusFocusId.current === task.id) {
                                   select.focus()
                                   statusFocusId.current = null
                                 }
@@ -610,25 +635,46 @@ export default function App({ getToken }) {
                               ))}
                             </select>
                           </label>
-                          <button
-                            className={styles.cardAction}
-                            type="button"
-                            onClick={() => startEditing(task)}
-                            disabled={busyId !== null}
-                            ref={(button) => {
-                              if (button && editReturnFocusId.current === task.id) {
-                                button.focus()
-                                editReturnFocusId.current = null
-                              }
-                            }}
-                          >
-                            Edit {task.title}
-                          </button>
-                          <button className={`${styles.cardAction} ${styles.deleteButton}`} type="button" onClick={() => deleteTask(task)} disabled={busyId !== null}>
-                            Delete {task.title}
-                          </button>
+                          <div className={styles.moveActions} aria-label={`Move ${task.title} within ${status.label}`}
+                            ref={(actions) => restoreMoveFocus(actions, task.id)}>
+                            <button className={styles.cardAction} type="button" aria-label={`Move ${task.title} up`}
+                              disabled={!canDrag || index === 0 || busyId !== null || saving}
+                              onClick={() => {
+                                moveFocus.current = { id: task.id, direction: 'up' }
+                                reorderColumn(task.id, columnTasks[index - 1].id)
+                              }}>Move up</button>
+                            <button className={styles.cardAction} type="button" aria-label={`Move ${task.title} down`}
+                              disabled={!canDrag || index === columnTasks.length - 1 || busyId !== null || saving}
+                              onClick={() => {
+                                moveFocus.current = { id: task.id, direction: 'down' }
+                                reorderColumn(task.id, columnTasks[index + 1].id, true)
+                              }}>Move down</button>
+                          </div>
+                          <div className={styles.cardActions}>
+                            <button
+                              className={styles.cardAction}
+                              type="button"
+                              onClick={() => startEditing(task)}
+                              disabled={busyId !== null}
+                              ref={(button) => {
+                                if (button && editReturnFocusId.current === task.id) {
+                                  button.focus()
+                                  editReturnFocusId.current = null
+                                }
+                              }}
+                            >
+                              Edit {task.title}
+                            </button>
+                            <button className={`${styles.cardAction} ${styles.deleteButton}`} type="button" onClick={() => deleteTask(task)} disabled={busyId !== null}>
+                              Delete {task.title}
+                            </button>
+                          </div>
                         </>
                       )}
+                      <Checklist task={task} getToken={getToken} disabled={busyId !== null || saving}
+                         onBusyChange={(busy) => setBusyId(busy ? task.id : null)}
+                         onItemsChange={(items) => setTasks((current) => current.map((entry) =>
+                           entry.id === task.id ? { ...entry, checklistItems: items } : entry))} />
                     </li>
                   ))}
                 </ul>

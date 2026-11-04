@@ -20,19 +20,20 @@ model User {
 }
 
 model Task {
-  id          Int          @id @default(autoincrement())
-  title       String
-  description String?
-  status      TaskStatus   @default(todo)
-  priority    TaskPriority @default(low)
-  dueDate     DateTime?
-  completedAt DateTime?
-  orderIndex  Int          @default(0)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  createdById String
-  createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  taskTags    TaskTag[]
+  id             Int             @id @default(autoincrement())
+  title          String
+  description    String?
+  status         TaskStatus      @default(todo)
+  priority       TaskPriority    @default(low)
+  dueDate        DateTime?
+  completedAt    DateTime?
+  orderIndex     Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  createdById    String
+  createdBy      User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  taskTags       TaskTag[]
+  checklistItems ChecklistItem[]
 
   @@index([createdById, status, orderIndex])
 }
@@ -57,6 +58,17 @@ model TaskTag {
 
   @@id([taskId, tagId])
   @@index([tagId])
+}
+
+model ChecklistItem {
+  id         Int     @id @default(autoincrement())
+  text       String
+  completed  Boolean @default(false)
+  orderIndex Int     @default(0)
+  taskId     Int
+  task       Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, orderIndex])
 }
 
 enum TaskStatus {

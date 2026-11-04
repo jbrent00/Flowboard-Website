@@ -69,3 +69,25 @@ export function reorderTasks(token, status, ids) {
 export function deleteTask(token, id) {
   return taskRequest(token, `/${id}`, { method: 'DELETE' })
 }
+
+export function createChecklistItem(token, taskId, text) {
+  return taskRequest(token, `/${taskId}/checklist-items`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+  })
+}
+
+export function updateChecklistItem(token, taskId, itemId, changes) {
+  return taskRequest(token, `/${taskId}/checklist-items/${itemId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes),
+  })
+}
+
+export function deleteChecklistItem(token, taskId, itemId) {
+  return taskRequest(token, `/${taskId}/checklist-items/${itemId}`, { method: 'DELETE' })
+}
+
+export function reorderChecklistItems(token, taskId, itemIds) {
+  return taskRequest(token, `/${taskId}/checklist-items/order`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemIds }),
+  })
+}

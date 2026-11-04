@@ -22,10 +22,19 @@
 
 .intro { margin: 0; color: #5d6878; }
 
-.addForm { max-width: 420px; margin-bottom: 24px; }
+.addForm {
+  width: min(640px, 100%);
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid #dce2e9;
+  border-radius: 8px;
+  background: #fff;
+}
+.addForm h2 { margin: 0 0 16px; font-size: 18px; }
 .addForm label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
 .addForm label[for="task-description"] { margin-top: 12px; }
-.addForm .extraLabel { margin-top: 12px; }
+.formRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.formRow > div { min-width: 0; }
 .addForm select, .addForm input[type="datetime-local"] {
   width: 100%;
   min-height: 44px;
@@ -47,7 +56,10 @@
   border-radius: 6px;
   font: inherit;
 }
-.addForm textarea { width: 100%; padding: 10px 12px; border: 1px solid #aab5c2; border-radius: 6px; font: inherit; resize: vertical; }
+.addForm textarea {
+  width: 100%; min-width: 0; min-height: 96px; padding: 10px 12px;
+  border: 1px solid #aab5c2; border-radius: 6px; background: #fff; font: inherit; resize: vertical;
+}
 .addForm button {
   min-height: 44px;
   margin-top: 8px;
@@ -102,11 +114,12 @@
 }
 
 .column {
+  min-width: 0;
   min-height: 260px;
   padding: 18px;
   border: 1px solid #dce2e9;
   border-radius: 8px;
-  background: #fff;
+  background: #f3f5f7;
 }
 .dropColumn { outline: 2px dashed #31547e; outline-offset: -4px; }
 
@@ -125,11 +138,12 @@
 }
 
 .task {
+  min-width: 0;
   padding: 12px;
   overflow-wrap: anywhere;
   border: 1px solid #e2e6eb;
   border-radius: 6px;
-  background: #fafbfc;
+  background: #fff;
   font-size: 14px;
   line-height: 1.4;
 }
@@ -138,8 +152,10 @@
 .dropBefore { box-shadow: inset 0 3px #31547e; }
 .dropAfter { box-shadow: inset 0 -3px #31547e; }
 
-.description { margin: 8px 0 0; color: #5d6878; white-space: pre-wrap; }
-.metadata { margin: 8px 0 0; color: #5d6878; }
+.taskTitle { margin: 0; font-size: 16px; line-height: 1.35; }
+.description { margin: 8px 0 0; color: #5d6878; line-height: 1.5; white-space: pre-wrap; }
+.taskMeta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px; }
+.metadata { margin: 0; color: #5d6878; font-size: 13px; }
 .priority { text-transform: capitalize; }
 
 .cardAction {
@@ -157,6 +173,11 @@
 }
 
 .deleteButton { color: #a52828; }
+.cardActions { display: flex; flex-wrap: wrap; gap: 0 12px; }
+.cardActions .cardAction { margin: 0; }
+.moveActions { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+.moveActions .cardAction { margin: 0; }
+.moveActions .cardAction:disabled { color: #6b7280; cursor: not-allowed; text-decoration: none; }
 
 .statusControl { display: grid; gap: 6px; margin-top: 12px; font-weight: 600; }
 .statusControl select {
@@ -185,7 +206,8 @@
   font: inherit;
 }
 .editForm input, .editForm select { min-height: 44px; }
-.editForm textarea { resize: vertical; }
+.editForm textarea { min-height: 100px; resize: vertical; }
+.editForm > input:first-of-type { font-size: 16px; font-weight: 600; }
 .editActions { display: flex; flex-wrap: wrap; gap: 8px; }
 .editActions button {
   min-height: 44px;
@@ -216,6 +238,30 @@
 .tag_purple { background: #f3e8ff; color: #6b21a8; }
 .cardTags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
+.checklist { min-width: 0; margin-top: 12px; padding-top: 6px; border-top: 1px solid #dce2e9; }
+.checklist summary { min-height: 44px; padding: 10px 0; color: #31547e; font-weight: 600; cursor: pointer; }
+.checklistBody { display: grid; gap: 12px; min-width: 0; padding: 4px 0 8px; }
+.checklistItems { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.checklistItems li { display: grid; gap: 4px; min-width: 0; }
+.checklistItem { display: flex; align-items: flex-start; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.checklistItem input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: #31547e; }
+.checkedItem { color: #5d6878; text-decoration: line-through; }
+.checklistActions { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.checklistActions button, .checklistAdd button, .checklistEdit button {
+  min-height: 44px; padding: 6px 8px; border: 1px solid #31547e; border-radius: 6px;
+  background: #fff; color: #31547e; font: inherit; cursor: pointer;
+}
+.checklistActions button:last-child { color: #a52828; border-color: #a52828; }
+.checklist button:disabled { opacity: .55; cursor: not-allowed; }
+.checklistAdd, .checklistEdit { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.checklistAdd label, .checklistEdit label { flex-basis: 100%; font-weight: 600; }
+.checklistAdd input, .checklistEdit input {
+  flex: 1 1 130px; min-width: 0; min-height: 44px; padding: 6px 8px;
+  border: 1px solid #aab5c2; border-radius: 6px; background: #fff; color: inherit; font: inherit;
+}
+.checklist p { margin: 0; }
+.checklist :focus-visible { outline: 2px solid #31547e; outline-offset: 2px; }
+
 .tagManager { max-width: 420px; margin: 0 0 24px; border: 1px solid #dce2e9; border-radius: 6px; background: #fff; }
 .tagManager summary { min-height: 44px; padding: 10px 12px; font-weight: 600; cursor: pointer; }
 .tagManagerBody { padding: 0 12px 12px; }
@@ -239,9 +285,19 @@
 
 .empty { margin: 0; color: #6b7480; font-size: 14px; }
 
-@media (max-width: 800px) {
-  .page { padding: 24px 16px; }
-  .addControls { flex-direction: column; }
+@media (max-width: 1100px) {
+  .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 740px) {
+  .page { padding: 24px 14px; }
+  .addForm { padding: 16px; }
+  .dateView, .search, .sortControl, .tagManager { max-width: none; }
+  .filterGroup { width: 100%; }
   .board { grid-template-columns: 1fr; }
   .column { min-height: 120px; }
+}
+
+@media (max-width: 540px) {
+  .formRow { grid-template-columns: 1fr; }
 }

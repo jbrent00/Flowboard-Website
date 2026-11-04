@@ -22,7 +22,7 @@ app.use('/api', (request, response, next) => {
       response.sendStatus(403)
       return
     }
-    response.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
+    response.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS')
     response.set('Access-Control-Allow-Headers', 'Authorization, Content-Type')
     response.sendStatus(204)
     return
