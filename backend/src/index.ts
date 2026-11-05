@@ -4,6 +4,7 @@ import { verifyWebhook } from '@clerk/express/webhooks'
 import { syncClerkUser } from './userProfile.js'
 import { taskRoutes } from './tasks.js'
 import { tagRoutes } from './tags.js'
+import { projectRoutes } from './projects.js'
 
 const app = express()
 const port = Number(process.env.PORT) || 3001
@@ -90,6 +91,16 @@ app.use('/api/tags', clerkMiddleware(), (request, response, next) => {
 })
 
 app.use('/api/tags', express.json({ limit: '16kb' }), tagRoutes)
+
+app.use('/api/projects', clerkMiddleware(), (request, response, next) => {
+  if (!getAuth(request).isAuthenticated) {
+    response.status(401).json({ error: 'Unauthorized' })
+    return
+  }
+  next()
+})
+
+app.use('/api/projects', express.json({ limit: '16kb' }), projectRoutes)
 
 app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`)

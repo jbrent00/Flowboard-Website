@@ -32,6 +32,15 @@ function AuthPage({ signUp = false }) {
   )
 }
 
+function WorkspaceNav() {
+  return (
+    <nav className="workspaceNav" aria-label="Workspace">
+      <Link to="/tasks">My tasks</Link>
+      <Link to="/projects">Projects</Link>
+    </nav>
+  )
+}
+
 function ProtectedBoard() {
   const { isLoaded, userId, getToken } = useAuth()
   const [serviceStatus, setServiceStatus] = useState('')
@@ -89,15 +98,77 @@ function ProtectedBoard() {
 
   return (
     <>
-      <nav className="accountBar" aria-label="Account">
+      <div className="accountBar">
         <Link to="/">Flowboard</Link>
+        <WorkspaceNav />
         <div className="accountActions">
           <button type="button" onClick={checkTaskService} disabled={checkingService}>Check task service</button>
           <UserButton />
         </div>
-      </nav>
+      </div>
       {serviceStatus && <p className="serviceStatus" role="status">{serviceStatus}</p>}
       <App key={userId} getToken={getToken} />
+    </>
+  )
+}
+
+function ProjectList() {
+  const { isLoaded, userId, getToken } = useAuth()
+  const [projects, setProjects] = useState([])
+  const [status, setStatus] = useState('loading')
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (!isLoaded || !userId) return
+    const controller = new AbortController()
+    async function loadProjects() {
+      try {
+        const token = await getToken()
+        if (!token || !backendBaseUrl) throw new Error('Project service unavailable')
+        const response = await fetch(`${backendBaseUrl}/api/projects`, {
+          headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+        })
+        if (!response.ok) throw new Error('Project service unavailable')
+        const data = await response.json()
+        if (!Array.isArray(data)) throw new Error('Invalid project list')
+        if (!controller.signal.aborted) {
+          setProjects(data)
+          setStatus('ready')
+        }
+      } catch {
+        if (!controller.signal.aborted) setStatus('error')
+      }
+    }
+    loadProjects()
+    return () => controller.abort()
+  }, [isLoaded, userId, getToken, attempt])
+
+  if (!isLoaded) return <main className="authShell"><p>Loading projects...</p></main>
+  if (!userId) return <RedirectToSignIn />
+
+  return (
+    <>
+      <div className="accountBar">
+        <Link to="/">Flowboard</Link>
+        <WorkspaceNav />
+        <UserButton />
+      </div>
+      <main className="projectPage">
+        <h1>Projects</h1>
+        {status === 'loading' && <p role="status">Loading projects...</p>}
+        {status === 'error' && <p role="alert">Projects could not be loaded. <button onClick={() => {
+          setStatus('loading')
+          setAttempt((value) => value + 1)
+        }}>Retry</button></p>}
+        {status === 'ready' && (projects.length ? (
+          <ul className="projectList">
+            {projects.map((project) => <li key={project.id}>
+              <h2>{project.title}</h2>
+              {project.description && <p>{project.description}</p>}
+            </li>)}
+          </ul>
+        ) : <p>No projects yet.</p>)}
+      </main>
     </>
   )
 }
@@ -109,6 +180,7 @@ export default function SiteRoutes() {
       <Route path="/sign-in/*" element={<AuthPage />} />
       <Route path="/sign-up/*" element={<AuthPage signUp />} />
       <Route path="/tasks" element={<ProtectedBoard />} />
+      <Route path="/projects" element={<ProjectList />} />
       <Route path="*" element={<main className="authShell"><h1>Page not found</h1><Link to="/">Go home</Link></main>} />
     </Routes>
   )

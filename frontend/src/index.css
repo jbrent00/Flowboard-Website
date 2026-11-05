@@ -38,10 +38,22 @@ body { margin: 0; }
   width: min(1200px, 100%);
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin: 0 auto;
   padding: 16px 24px 0;
 }
 .accountBar a { color: #31547e; font-weight: 700; }
+.workspaceNav { display: flex; flex-wrap: wrap; gap: 16px; }
+.workspaceNav a { display: inline-flex; min-height: 44px; align-items: center; }
+.projectPage { width: min(1200px, 100%); margin: 0 auto; padding: 40px 24px; }
+.projectPage h1 { margin: 0 0 24px; font-size: 30px; }
+.projectList { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.projectList li { padding: 18px; border: 1px solid #dce2e9; border-radius: 8px; background: #fff; }
+.projectList h2 { margin: 0; font-size: 18px; }
+.projectList p { margin: 8px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.projectPage button { min-height: 44px; color: #31547e; font: inherit; cursor: pointer; }
+.projectPage :focus-visible { outline: 2px solid #31547e; outline-offset: 3px; }
 .accountActions { display: flex; align-items: center; gap: 12px; }
 .accountActions button {
   min-height: 44px;
@@ -58,5 +70,6 @@ body { margin: 0; }
 
 @media (max-width: 800px) {
   .accountBar { padding: 16px 16px 0; }
+  .projectPage { padding: 32px 16px; }
   .serviceStatus { padding: 0 16px; }
 }
