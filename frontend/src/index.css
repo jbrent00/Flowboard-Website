@@ -51,7 +51,14 @@ body { margin: 0; }
 .projectList { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .projectList li { padding: 18px; border: 1px solid #dce2e9; border-radius: 8px; background: #fff; }
 .projectList h2 { margin: 0; font-size: 18px; }
+.projectList a, .projectBack { color: #31547e; }
 .projectList p { margin: 8px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.projectBack { display: inline-flex; min-height: 44px; align-items: center; margin-bottom: 16px; }
+.projectDescription { max-width: 70ch; margin: -8px 0 24px; line-height: 1.5; overflow-wrap: anywhere; }
+.projectBoard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.projectColumn { min-width: 0; min-height: 180px; padding: 18px; border: 1px solid #dce2e9; border-radius: 8px; background: #fff; }
+.projectColumn h2 { margin: 0 0 20px; font-size: 18px; }
+.projectColumn p { margin: 0; color: #5d6878; font-size: 14px; }
 .projectPage button { min-height: 44px; color: #31547e; font: inherit; cursor: pointer; }
 .projectPage :focus-visible { outline: 2px solid #31547e; outline-offset: 3px; }
 .accountActions { display: flex; align-items: center; gap: 12px; }
@@ -71,5 +78,6 @@ body { margin: 0; }
 @media (max-width: 800px) {
   .accountBar { padding: 16px 16px 0; }
   .projectPage { padding: 32px 16px; }
+  .projectBoard { grid-template-columns: 1fr; }
   .serviceStatus { padding: 0 16px; }
 }

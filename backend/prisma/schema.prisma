@@ -16,6 +16,7 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   tasksCreated Task[]
+  projectTasksCreated ProjectTask[]
   tags         Tag[]
   memberships  ProjectMembership[]
 }
@@ -27,6 +28,7 @@ model Project {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
   memberships ProjectMembership[]
+  tasks       ProjectTask[]
 }
 
 model ProjectMembership {
@@ -39,6 +41,25 @@ model ProjectMembership {
 
   @@id([projectId, userId])
   @@index([userId, role])
+}
+
+model ProjectTask {
+  id          Int          @id @default(autoincrement())
+  title       String
+  description String?
+  status      TaskStatus   @default(todo)
+  priority    TaskPriority @default(low)
+  dueDate     DateTime?
+  completedAt DateTime?
+  orderIndex  Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  projectId   Int
+  createdById String
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status, orderIndex])
 }
 
 model Task {

@@ -1,6 +1,6 @@
 import { RedirectToSignIn, SignIn, SignUp, UserButton, useAuth } from '@clerk/react'
 import { useEffect, useState } from 'react'
-import { Link, Navigate, Route, Routes } from 'react-router'
+import { Link, Navigate, Route, Routes, useParams } from 'react-router'
 import App from './App.jsx'
 import { backendBaseUrl, listTasks } from './taskApi.js'
 
@@ -163,11 +163,80 @@ function ProjectList() {
         {status === 'ready' && (projects.length ? (
           <ul className="projectList">
             {projects.map((project) => <li key={project.id}>
-              <h2>{project.title}</h2>
+              <h2><Link to={`/projects/${project.id}`}>{project.title}</Link></h2>
               {project.description && <p>{project.description}</p>}
             </li>)}
           </ul>
         ) : <p>No projects yet.</p>)}
+      </main>
+    </>
+  )
+}
+
+function ProjectBoard() {
+  const { id } = useParams()
+  const { isLoaded, userId, getToken } = useAuth()
+  const [project, setProject] = useState(null)
+  const [status, setStatus] = useState('loading')
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (!isLoaded || !userId) return
+    const controller = new AbortController()
+    async function loadProject() {
+      try {
+        const token = await getToken()
+        if (!token || !backendBaseUrl) throw new Error('Project service unavailable')
+        const response = await fetch(`${backendBaseUrl}/api/projects/${id}`, {
+          headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+        })
+        if (response.status === 404 || response.status === 400) {
+          if (!controller.signal.aborted) setStatus('missing')
+          return
+        }
+        if (!response.ok) throw new Error('Project service unavailable')
+        const data = await response.json()
+        if (!controller.signal.aborted) {
+          setProject(data)
+          setStatus('ready')
+        }
+      } catch {
+        if (!controller.signal.aborted) setStatus('error')
+      }
+    }
+    loadProject()
+    return () => controller.abort()
+  }, [isLoaded, userId, getToken, id, attempt])
+
+  if (!isLoaded) return <main className="authShell"><p>Loading project...</p></main>
+  if (!userId) return <RedirectToSignIn />
+
+  const currentProject = project && String(project.id) === id ? project : null
+  return (
+    <>
+      <div className="accountBar">
+        <Link to="/">Flowboard</Link>
+        <WorkspaceNav />
+        <UserButton />
+      </div>
+      <main className="projectPage">
+        <Link className="projectBack" to="/projects">Back to projects</Link>
+        {(status === 'loading' || (status === 'ready' && !currentProject)) && <p role="status">Loading project...</p>}
+        {status === 'missing' && <p role="alert">Project not found.</p>}
+        {status === 'error' && <p role="alert">Project could not be loaded. <button onClick={() => {
+          setStatus('loading')
+          setAttempt((value) => value + 1)
+        }}>Retry</button></p>}
+        {status === 'ready' && currentProject && <>
+          <h1>{currentProject.title}</h1>
+          {currentProject.description && <p className="projectDescription">{currentProject.description}</p>}
+          <div className="projectBoard" aria-label="Project task board">
+            {['To do', 'In progress', 'Completed'].map((label) => <section key={label} className="projectColumn">
+              <h2>{label}</h2>
+              <p>No project tasks yet.</p>
+            </section>)}
+          </div>
+        </>}
       </main>
     </>
   )
@@ -181,6 +250,7 @@ export default function SiteRoutes() {
       <Route path="/sign-up/*" element={<AuthPage signUp />} />
       <Route path="/tasks" element={<ProtectedBoard />} />
       <Route path="/projects" element={<ProjectList />} />
+      <Route path="/projects/:id" element={<ProjectBoard />} />
       <Route path="*" element={<main className="authShell"><h1>Page not found</h1><Link to="/">Go home</Link></main>} />
     </Routes>
   )

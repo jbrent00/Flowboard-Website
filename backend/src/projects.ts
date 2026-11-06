@@ -37,6 +37,61 @@ function missingProject(error: unknown) {
   return error !== null && typeof error === 'object' && 'code' in error && error.code === 'P2025'
 }
 
+async function projectRole(id: number, userId: string) {
+  const membership = await getPrisma().projectMembership.findUnique({
+    where: { projectId_userId: { projectId: id, userId } },
+    select: { role: true },
+  })
+  return membership?.role
+}
+
+function projectTaskChanges(body: unknown) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+  const input = body as Record<string, unknown>
+  const keys = Object.keys(input)
+  if (!keys.length || keys.some((key) => !['title', 'description', 'status', 'priority', 'dueDate'].includes(key))) return null
+
+  const changes: {
+    title?: string
+    description?: string | null
+    status?: 'todo' | 'in_progress' | 'completed'
+    priority?: 'low' | 'medium' | 'high'
+    dueDate?: Date | null
+    completedAt?: Date | null
+    orderIndex?: number
+  } = {}
+  if ('title' in input) {
+    if (typeof input.title !== 'string' || !input.title.trim() || input.title.trim().length > 100) return null
+    changes.title = input.title.trim()
+  }
+  if ('description' in input) {
+    if (input.description !== null && typeof input.description !== 'string') return null
+    const description = input.description
+    if (typeof description === 'string' && description.trim().length > 500) return null
+    changes.description = typeof description === 'string' ? description.trim() || null : null
+  }
+  if ('status' in input) {
+    if (input.status !== 'todo' && input.status !== 'in_progress' && input.status !== 'completed') return null
+    changes.status = input.status
+  }
+  if ('priority' in input) {
+    if (input.priority !== 'low' && input.priority !== 'medium' && input.priority !== 'high') return null
+    changes.priority = input.priority
+  }
+  if ('dueDate' in input) {
+    if (input.dueDate !== null) {
+      if (typeof input.dueDate !== 'string' ||
+          !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(input.dueDate)) return null
+      const date = new Date(input.dueDate)
+      if (!Number.isFinite(date.getTime())) return null
+      changes.dueDate = date
+    } else {
+      changes.dueDate = null
+    }
+  }
+  return changes
+}
+
 projectRoutes.get('/', async (request, response) => {
   const { userId } = getAuth(request)
   if (!userId) {
@@ -107,6 +162,173 @@ projectRoutes.get('/:id', async (request, response) => {
   } catch (error) {
     console.error('Could not load project', error)
     response.status(503).json({ error: 'Project could not be loaded' })
+  }
+})
+
+projectRoutes.get('/:id/tasks', async (request, response) => {
+  const { userId } = getAuth(request)
+  if (!userId) {
+    response.status(401).json({ error: 'Unauthorized' })
+    return
+  }
+  const id = projectId(request.params.id)
+  if (!id) {
+    response.status(400).json({ error: 'Invalid project id' })
+    return
+  }
+  try {
+    if (!await projectRole(id, userId)) {
+      response.status(404).json({ error: 'Project not found' })
+      return
+    }
+    const tasks = await getPrisma().projectTask.findMany({
+      where: { projectId: id },
+      orderBy: [{ orderIndex: 'asc' }, { id: 'asc' }],
+    })
+    response.json(tasks)
+  } catch (error) {
+    console.error('Could not load project tasks', error)
+    response.status(503).json({ error: 'Project tasks could not be loaded' })
+  }
+})
+
+projectRoutes.post('/:id/tasks', async (request, response) => {
+  const { userId } = getAuth(request)
+  if (!userId) {
+    response.status(401).json({ error: 'Unauthorized' })
+    return
+  }
+  const id = projectId(request.params.id)
+  if (!id) {
+    response.status(400).json({ error: 'Invalid project id' })
+    return
+  }
+  const body: unknown = request.body
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    response.status(400).json({ error: 'Invalid task details' })
+    return
+  }
+  const input = body as Record<string, unknown>
+  const title = input.title
+  const description = input.description ?? null
+  if (Object.keys(input).some((key) => key !== 'title' && key !== 'description') ||
+      typeof title !== 'string' || !title.trim() || title.trim().length > 100 ||
+      (description !== null && (typeof description !== 'string' || description.trim().length > 500))) {
+    response.status(400).json({ error: 'Invalid task details' })
+    return
+  }
+  try {
+    const role = await projectRole(id, userId)
+    if (!role) {
+      response.status(404).json({ error: 'Project not found' })
+      return
+    }
+    if (role === 'viewer') {
+      response.status(403).json({ error: 'Viewers cannot create tasks' })
+      return
+    }
+    const latest = await getPrisma().projectTask.aggregate({
+      where: { projectId: id, status: 'todo' },
+      _max: { orderIndex: true },
+    })
+    const task = await getPrisma().projectTask.create({
+      data: {
+        title: title.trim(),
+        description: typeof description === 'string' ? description.trim() || null : null,
+        projectId: id,
+        createdById: userId,
+        orderIndex: (latest._max.orderIndex ?? -1) + 1,
+      },
+    })
+    response.status(201).json(task)
+  } catch (error) {
+    console.error('Could not create project task', error)
+    response.status(503).json({ error: 'Project task could not be saved' })
+  }
+})
+
+projectRoutes.patch('/:id/tasks/:taskId', async (request, response) => {
+  const { userId } = getAuth(request)
+  if (!userId) {
+    response.status(401).json({ error: 'Unauthorized' })
+    return
+  }
+  const id = projectId(request.params.id)
+  const taskId = projectId(request.params.taskId)
+  const changes = projectTaskChanges(request.body)
+  if (!id || !taskId || !changes) {
+    response.status(400).json({ error: 'Invalid task details' })
+    return
+  }
+  try {
+    const role = await projectRole(id, userId)
+    if (!role) {
+      response.status(404).json({ error: 'Project not found' })
+      return
+    }
+    if (role === 'viewer') {
+      response.status(403).json({ error: 'Viewers cannot edit tasks' })
+      return
+    }
+    const prisma = getPrisma()
+    const current = await prisma.projectTask.findFirst({ where: { id: taskId, projectId: id } })
+    if (!current) {
+      response.status(404).json({ error: 'Task not found' })
+      return
+    }
+    if (changes.status && changes.status !== current.status) {
+      const latest = await prisma.projectTask.aggregate({
+        where: { projectId: id, status: changes.status },
+        _max: { orderIndex: true },
+      })
+      changes.orderIndex = (latest._max.orderIndex ?? -1) + 1
+      changes.completedAt = changes.status === 'completed' ? new Date() : null
+    }
+    const task = await prisma.projectTask.update({
+      where: { id: taskId, projectId: id }, data: changes,
+    })
+    response.json(task)
+  } catch (error) {
+    if (missingProject(error)) {
+      response.status(404).json({ error: 'Task not found' })
+      return
+    }
+    console.error('Could not edit project task', error)
+    response.status(503).json({ error: 'Project task could not be updated' })
+  }
+})
+
+projectRoutes.delete('/:id/tasks/:taskId', async (request, response) => {
+  const { userId } = getAuth(request)
+  if (!userId) {
+    response.status(401).json({ error: 'Unauthorized' })
+    return
+  }
+  const id = projectId(request.params.id)
+  const taskId = projectId(request.params.taskId)
+  if (!id || !taskId) {
+    response.status(400).json({ error: 'Invalid task id' })
+    return
+  }
+  try {
+    const role = await projectRole(id, userId)
+    if (!role) {
+      response.status(404).json({ error: 'Project not found' })
+      return
+    }
+    if (role === 'viewer') {
+      response.status(403).json({ error: 'Viewers cannot delete tasks' })
+      return
+    }
+    await getPrisma().projectTask.delete({ where: { id: taskId, projectId: id } })
+    response.sendStatus(204)
+  } catch (error) {
+    if (missingProject(error)) {
+      response.status(404).json({ error: 'Task not found' })
+      return
+    }
+    console.error('Could not delete project task', error)
+    response.status(503).json({ error: 'Project task could not be deleted' })
   }
 })
 
