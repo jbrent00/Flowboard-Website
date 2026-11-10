@@ -1,36 +1,13 @@
 import { getAuth } from '@clerk/express'
 import { Router } from 'express'
 import { getPrisma } from './prisma.js'
+import { tagInput } from './tagValidation.js'
 
 export const tagRoutes = Router()
-
-const colors = ['slate', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple']
 
 function errorCode(error: unknown) {
   if (error !== null && typeof error === 'object' && 'code' in error) return error.code
   return null
-}
-
-function tagInput(body: unknown, partial: boolean) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null
-  const input = body as Record<string, unknown>
-  const keys = Object.keys(input)
-  if (keys.length === 0 || keys.some((key) => key !== 'name' && key !== 'color')) return null
-  if (!partial && (!('name' in input) || !('color' in input))) return null
-
-  const changes: { name?: string; normalizedName?: string; color?: string } = {}
-  if ('name' in input) {
-    if (typeof input.name !== 'string') return null
-    const name = input.name.trim()
-    if (!name || name.length > 24) return null
-    changes.name = name
-    changes.normalizedName = name.toLowerCase()
-  }
-  if ('color' in input) {
-    if (typeof input.color !== 'string' || !colors.includes(input.color)) return null
-    changes.color = input.color
-  }
-  return changes
 }
 
 function tagId(value: string | string[] | undefined) {

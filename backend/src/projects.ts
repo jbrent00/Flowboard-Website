@@ -1,8 +1,27 @@
 import { getAuth } from '@clerk/express'
 import { Router } from 'express'
+import type { ProjectTask } from './generated/prisma/client.js'
 import { getPrisma } from './prisma.js'
+import { projectId, projectRole } from './projectAccess.js'
+import { projectInvitationRoutes } from './projectInvitations.js'
+import { projectTagRoutes } from './projectTags.js'
+import { parseTagIds } from './tagValidation.js'
 
 export const projectRoutes = Router()
+projectRoutes.use('/:id/invitations', projectInvitationRoutes)
+projectRoutes.use('/:id/tags', projectTagRoutes)
+
+const projectTaskInclude = { taskTags: { select: { tagId: true } } } as const
+
+function projectTaskResponse(task: ProjectTask & { taskTags: Array<{ tagId: number }> }) {
+  const { taskTags, ...fields } = task
+  return { ...fields, tagIds: taskTags.map(({ tagId }) => tagId) }
+}
+
+async function projectOwnsTags(id: number, tagIds: number[]) {
+  if (tagIds.length === 0) return true
+  return await getPrisma().projectTag.count({ where: { projectId: id, id: { in: tagIds } } }) === tagIds.length
+}
 
 function projectInput(body: unknown, partial: boolean) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null
@@ -27,29 +46,17 @@ function projectInput(body: unknown, partial: boolean) {
   return changes
 }
 
-function projectId(value: string | string[] | undefined) {
-  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return null
-  const id = Number(value)
-  return Number.isSafeInteger(id) ? id : null
-}
-
 function missingProject(error: unknown) {
   return error !== null && typeof error === 'object' && 'code' in error && error.code === 'P2025'
-}
-
-async function projectRole(id: number, userId: string) {
-  const membership = await getPrisma().projectMembership.findUnique({
-    where: { projectId_userId: { projectId: id, userId } },
-    select: { role: true },
-  })
-  return membership?.role
 }
 
 function projectTaskChanges(body: unknown) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null
   const input = body as Record<string, unknown>
   const keys = Object.keys(input)
-  if (!keys.length || keys.some((key) => !['title', 'description', 'status', 'priority', 'dueDate'].includes(key))) return null
+  if (!keys.length || keys.some((key) => !['title', 'description', 'status', 'priority', 'dueDate', 'tagIds'].includes(key))) return null
+  const tagIds = 'tagIds' in input ? parseTagIds(input.tagIds) : undefined
+  if (tagIds === null) return null
 
   const changes: {
     title?: string
@@ -89,7 +96,7 @@ function projectTaskChanges(body: unknown) {
       changes.dueDate = null
     }
   }
-  return changes
+  return { changes, tagIds }
 }
 
 projectRoutes.get('/', async (request, response) => {
@@ -184,8 +191,9 @@ projectRoutes.get('/:id/tasks', async (request, response) => {
     const tasks = await getPrisma().projectTask.findMany({
       where: { projectId: id },
       orderBy: [{ orderIndex: 'asc' }, { id: 'asc' }],
+      include: projectTaskInclude,
     })
-    response.json(tasks)
+    response.json(tasks.map(projectTaskResponse))
   } catch (error) {
     console.error('Could not load project tasks', error)
     response.status(503).json({ error: 'Project tasks could not be loaded' })
@@ -211,7 +219,8 @@ projectRoutes.post('/:id/tasks', async (request, response) => {
   const input = body as Record<string, unknown>
   const title = input.title
   const description = input.description ?? null
-  if (Object.keys(input).some((key) => key !== 'title' && key !== 'description') ||
+  const tagIds = 'tagIds' in input ? parseTagIds(input.tagIds) : []
+  if (Object.keys(input).some((key) => !['title', 'description', 'tagIds'].includes(key)) || tagIds === null ||
       typeof title !== 'string' || !title.trim() || title.trim().length > 100 ||
       (description !== null && (typeof description !== 'string' || description.trim().length > 500))) {
     response.status(400).json({ error: 'Invalid task details' })
@@ -227,6 +236,10 @@ projectRoutes.post('/:id/tasks', async (request, response) => {
       response.status(403).json({ error: 'Viewers cannot create tasks' })
       return
     }
+    if (!await projectOwnsTags(id, tagIds)) {
+      response.status(400).json({ error: 'Tags must belong to this project' })
+      return
+    }
     const latest = await getPrisma().projectTask.aggregate({
       where: { projectId: id, status: 'todo' },
       _max: { orderIndex: true },
@@ -238,9 +251,11 @@ projectRoutes.post('/:id/tasks', async (request, response) => {
         projectId: id,
         createdById: userId,
         orderIndex: (latest._max.orderIndex ?? -1) + 1,
+        taskTags: { create: tagIds.map((tagId) => ({ tagId })) },
       },
+      include: projectTaskInclude,
     })
-    response.status(201).json(task)
+    response.status(201).json(projectTaskResponse(task))
   } catch (error) {
     console.error('Could not create project task', error)
     response.status(503).json({ error: 'Project task could not be saved' })
@@ -255,11 +270,12 @@ projectRoutes.patch('/:id/tasks/:taskId', async (request, response) => {
   }
   const id = projectId(request.params.id)
   const taskId = projectId(request.params.taskId)
-  const changes = projectTaskChanges(request.body)
-  if (!id || !taskId || !changes) {
+  const input = projectTaskChanges(request.body)
+  if (!id || !taskId || !input) {
     response.status(400).json({ error: 'Invalid task details' })
     return
   }
+  const { changes, tagIds } = input
   try {
     const role = await projectRole(id, userId)
     if (!role) {
@@ -276,6 +292,10 @@ projectRoutes.patch('/:id/tasks/:taskId', async (request, response) => {
       response.status(404).json({ error: 'Task not found' })
       return
     }
+    if (tagIds && !await projectOwnsTags(id, tagIds)) {
+      response.status(400).json({ error: 'Tags must belong to this project' })
+      return
+    }
     if (changes.status && changes.status !== current.status) {
       const latest = await prisma.projectTask.aggregate({
         where: { projectId: id, status: changes.status },
@@ -285,9 +305,14 @@ projectRoutes.patch('/:id/tasks/:taskId', async (request, response) => {
       changes.completedAt = changes.status === 'completed' ? new Date() : null
     }
     const task = await prisma.projectTask.update({
-      where: { id: taskId, projectId: id }, data: changes,
+      where: { id: taskId, projectId: id },
+      data: {
+        ...changes,
+        ...(tagIds ? { taskTags: { deleteMany: {}, create: tagIds.map((tagId) => ({ tagId })) } } : {}),
+      },
+      include: projectTaskInclude,
     })
-    response.json(task)
+    response.json(projectTaskResponse(task))
   } catch (error) {
     if (missingProject(error)) {
       response.status(404).json({ error: 'Task not found' })

@@ -2,6 +2,7 @@ import { RedirectToSignIn, SignIn, SignUp, UserButton, useAuth } from '@clerk/re
 import { useEffect, useState } from 'react'
 import { Link, Navigate, Route, Routes, useParams } from 'react-router'
 import App from './App.jsx'
+import ProjectTasks from './ProjectTasks.jsx'
 import { backendBaseUrl, listTasks } from './taskApi.js'
 
 function Home() {
@@ -230,12 +231,7 @@ function ProjectBoard() {
         {status === 'ready' && currentProject && <>
           <h1>{currentProject.title}</h1>
           {currentProject.description && <p className="projectDescription">{currentProject.description}</p>}
-          <div className="projectBoard" aria-label="Project task board">
-            {['To do', 'In progress', 'Completed'].map((label) => <section key={label} className="projectColumn">
-              <h2>{label}</h2>
-              <p>No project tasks yet.</p>
-            </section>)}
-          </div>
+          <ProjectTasks key={id} projectId={id} getToken={getToken} />
         </>}
       </main>
     </>

@@ -3,18 +3,23 @@ import styles from './App.module.css'
 
 const tagColors = ['slate', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple']
 
-export function TagChoices({ tags, selectedIds, onChange }) {
-  return <fieldset className={styles.tagChoices}>
+export function TagBadge({ tag }) {
+  return <span className={`${styles.tagBadge} ${styles[`tag_${tag.color}`]}`}>{tag.name}</span>
+}
+
+export function TagChoices({ tags, selectedIds, onChange, scope = 'personal', disabled = false }) {
+  return <fieldset className={styles.tagChoices} disabled={disabled}>
     <legend>Tags (optional)</legend>
     {tags.length ? tags.map((tag) => <label key={tag.id}>
       <input type="checkbox" checked={selectedIds.includes(tag.id)} onChange={() => onChange(selectedIds.includes(tag.id)
         ? selectedIds.filter((id) => id !== tag.id) : [...selectedIds, tag.id])} />
-      <span className={`${styles.tagBadge} ${styles[`tag_${tag.color}`]}`}>{tag.name}</span>
-    </label>) : <span className={styles.tagHint}>Create a personal tag below to use it on tasks.</span>}
+      <TagBadge tag={tag} />
+    </label>) : <span className={styles.tagHint}>{scope === 'project'
+      ? 'Add a project tag to use it on tasks.' : 'Create a personal tag below to use it on tasks.'}</span>}
   </fieldset>
 }
 
-export default function TagManager({ tags, onCreate, onUpdate, onDelete }) {
+export default function TagManager({ tags, onCreate, onUpdate, onDelete, scope = 'personal' }) {
   const [editingId, setEditingId] = useState(null)
   const [name, setName] = useState('')
   const [color, setColor] = useState('blue')
@@ -45,7 +50,8 @@ export default function TagManager({ tags, onCreate, onUpdate, onDelete }) {
   }
 
   async function remove(tag) {
-    if (busy || !window.confirm(`Delete "${tag.name}"? It will be removed from your tasks.`)) return
+    const affectedTasks = scope === 'project' ? 'this project’s tasks' : 'your tasks'
+    if (busy || !window.confirm(`Delete "${tag.name}"? It will be removed from ${affectedTasks}.`)) return
     setBusy(true)
     setError('')
     try {
@@ -58,13 +64,13 @@ export default function TagManager({ tags, onCreate, onUpdate, onDelete }) {
   }
 
   return <details className={styles.tagManager}>
-    <summary>Personal tags ({tags.length})</summary>
+    <summary>{scope === 'project' ? 'Project tags' : 'Personal tags'} ({tags.length})</summary>
     <div className={styles.tagManagerBody}>
       {tags.length ? <ul className={styles.managedTags}>{tags.map((tag) => <li key={tag.id}>
-        <span className={`${styles.tagBadge} ${styles[`tag_${tag.color}`]}`}>{tag.name}</span>
+        <TagBadge tag={tag} />
         <button type="button" disabled={busy} onClick={() => start(tag)}>Edit {tag.name}</button>
         <button type="button" disabled={busy} onClick={() => remove(tag)}>Delete {tag.name}</button>
-      </li>)}</ul> : <p className={styles.tagHint}>No personal tags yet.</p>}
+      </li>)}</ul> : <p className={styles.tagHint}>No {scope} tags yet.</p>}
       {editingId === null ? <button type="button" onClick={() => start(null)}>Add tag</button> :
         <form className={styles.tagEditor} onSubmit={save}>
           <label htmlFor="tag-name">Tag name</label>

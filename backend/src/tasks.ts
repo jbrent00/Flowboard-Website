@@ -3,6 +3,7 @@ import { Router } from 'express'
 import type { Task } from './generated/prisma/client.js'
 import { getPrisma } from './prisma.js'
 import { checklistRoutes } from './checklist.js'
+import { parseTagIds } from './tagValidation.js'
 
 export const taskRoutes = Router()
 taskRoutes.use('/:taskId/checklist-items', checklistRoutes)
@@ -32,12 +33,6 @@ function parseChecklistItems(value: unknown): Array<{ text: string }> | null {
     items.push({ text })
   }
   return items
-}
-
-function parseTagIds(value: unknown): number[] | null {
-  if (!Array.isArray(value) || !value.every((id) => Number.isSafeInteger(id) && id > 0) ||
-      new Set(value).size !== value.length) return null
-  return value
 }
 
 async function ownsTags(userId: string, tagIds: number[]) {

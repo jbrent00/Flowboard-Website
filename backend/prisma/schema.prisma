@@ -19,6 +19,17 @@ model User {
   projectTasksCreated ProjectTask[]
   tags         Tag[]
   memberships  ProjectMembership[]
+  verifiedEmails UserEmail[]
+  invitationsSent ProjectInvitation[]
+}
+
+model UserEmail {
+  userId          String
+  normalizedEmail String
+  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, normalizedEmail])
+  @@index([normalizedEmail])
 }
 
 model Project {
@@ -29,6 +40,8 @@ model Project {
   updatedAt   DateTime            @updatedAt
   memberships ProjectMembership[]
   tasks       ProjectTask[]
+  tags        ProjectTag[]
+  invitations ProjectInvitation[]
 }
 
 model ProjectMembership {
@@ -41,6 +54,24 @@ model ProjectMembership {
 
   @@id([projectId, userId])
   @@index([userId, role])
+}
+
+model ProjectInvitation {
+  id              Int              @id @default(autoincrement())
+  projectId       Int
+  inviterId       String
+  email           String
+  normalizedEmail String
+  role            InvitationRole
+  status          InvitationStatus @default(pending)
+  expiresAt       DateTime
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  inviter         User             @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([normalizedEmail, status, expiresAt])
+  @@index([projectId, status, expiresAt])
 }
 
 model ProjectTask {
@@ -58,8 +89,31 @@ model ProjectTask {
   createdById String
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  taskTags    ProjectTaskTag[]
 
   @@index([projectId, status, orderIndex])
+}
+
+model ProjectTag {
+  id             Int              @id @default(autoincrement())
+  name           String
+  normalizedName String
+  color          String
+  projectId      Int
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskTags       ProjectTaskTag[]
+
+  @@unique([projectId, normalizedName])
+}
+
+model ProjectTaskTag {
+  taskId Int
+  tagId  Int
+  task   ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag    ProjectTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+  @@index([tagId])
 }
 
 model Task {
@@ -130,4 +184,17 @@ enum ProjectRole {
   owner
   editor
   viewer
+}
+
+enum InvitationRole {
+  editor
+  viewer
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  declined
+  revoked
+  expired
 }

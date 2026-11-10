@@ -59,7 +59,31 @@ body { margin: 0; }
 .projectColumn { min-width: 0; min-height: 180px; padding: 18px; border: 1px solid #dce2e9; border-radius: 8px; background: #fff; }
 .projectColumn h2 { margin: 0 0 20px; font-size: 18px; }
 .projectColumn p { margin: 0; color: #5d6878; font-size: 14px; }
+.projectTaskForm, .projectTask { padding: 16px; border: 1px solid #dce2e9; border-radius: 8px; background: #fff; }
+.projectTaskForm { display: grid; gap: 8px; width: min(560px, 100%); margin: 0 0 24px; }
+.projectTaskForm h2 { margin: 0 0 8px; font-size: 18px; }
+.projectTaskForm > label, .projectTaskEdit > label, .projectTaskStatus { display: grid; gap: 6px; font-size: 14px; font-weight: 600; }
+.projectTaskForm > input, .projectTaskForm textarea, .projectTaskEdit > label > input, .projectTaskEdit textarea,
+.projectTaskEdit select, .projectTaskStatus select {
+  width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid #aab5c2;
+  border-radius: 6px; background: #fff; color: #243044; font: inherit;
+}
+.projectTaskForm textarea, .projectTaskEdit textarea { min-height: 80px; resize: vertical; }
+.projectTaskForm button { justify-self: start; }
+.projectTaskForm button, .projectTaskActions button { padding: 8px 12px; border: 1px solid #31547e; border-radius: 6px; background: #31547e; color: #fff; }
+.projectTaskForm button:disabled, .projectTaskActions button:disabled { opacity: .55; cursor: wait; }
+.projectTaskError { margin: 0 0 16px; color: #a52828; }
+.projectTask { margin-top: 12px; overflow-wrap: anywhere; }
+.projectTask h3 { margin: 0 0 8px; font-size: 16px; }
+.projectColumn .projectTask p { margin: 0 0 10px; line-height: 1.5; }
+.projectColumn .projectTaskDescription { color: #243044; white-space: pre-wrap; }
+.projectTaskStatus { margin-top: 12px; }
+.projectTaskEdit { display: grid; gap: 12px; }
+.projectTaskActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.projectTaskActions button:last-child { background: #fff; color: #31547e; }
 .projectPage button { min-height: 44px; color: #31547e; font: inherit; cursor: pointer; }
+.projectPage .projectTaskForm button, .projectPage .projectTaskActions button { color: #fff; }
+.projectPage .projectTaskActions button:last-child { color: #31547e; }
 .projectPage :focus-visible { outline: 2px solid #31547e; outline-offset: 3px; }
 .accountActions { display: flex; align-items: center; gap: 12px; }
 .accountActions button {

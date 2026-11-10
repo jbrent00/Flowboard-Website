@@ -7,6 +7,7 @@
     "dev": "tsx watch --env-file=.env.local --clear-screen=false src/index.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test test/verifiedEmail.test.ts",
     "start": "node --env-file-if-exists=.env.local dist/index.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
