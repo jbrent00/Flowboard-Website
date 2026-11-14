@@ -2,6 +2,7 @@ import { RedirectToSignIn, SignIn, SignUp, UserButton, useAuth } from '@clerk/re
 import { useEffect, useState } from 'react'
 import { Link, Navigate, Route, Routes, useParams } from 'react-router'
 import App from './App.jsx'
+import ProjectInvitations from './ProjectInvitations.jsx'
 import ProjectTasks from './ProjectTasks.jsx'
 import { backendBaseUrl, listTasks } from './taskApi.js'
 
@@ -177,12 +178,18 @@ function ProjectList() {
 function ProjectBoard() {
   const { id } = useParams()
   const { isLoaded, userId, getToken } = useAuth()
+  if (!isLoaded) return <main className="authShell"><p>Loading project...</p></main>
+  if (!userId) return <RedirectToSignIn />
+
+  return <OwnedProjectBoard key={`${userId}:${id}`} id={id} getToken={getToken} />
+}
+
+function OwnedProjectBoard({ id, getToken }) {
   const [project, setProject] = useState(null)
   const [status, setStatus] = useState('loading')
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    if (!isLoaded || !userId) return
     const controller = new AbortController()
     async function loadProject() {
       try {
@@ -207,12 +214,8 @@ function ProjectBoard() {
     }
     loadProject()
     return () => controller.abort()
-  }, [isLoaded, userId, getToken, id, attempt])
+  }, [getToken, id, attempt])
 
-  if (!isLoaded) return <main className="authShell"><p>Loading project...</p></main>
-  if (!userId) return <RedirectToSignIn />
-
-  const currentProject = project && String(project.id) === id ? project : null
   return (
     <>
       <div className="accountBar">
@@ -222,16 +225,17 @@ function ProjectBoard() {
       </div>
       <main className="projectPage">
         <Link className="projectBack" to="/projects">Back to projects</Link>
-        {(status === 'loading' || (status === 'ready' && !currentProject)) && <p role="status">Loading project...</p>}
+        {status === 'loading' && <p role="status">Loading project...</p>}
         {status === 'missing' && <p role="alert">Project not found.</p>}
         {status === 'error' && <p role="alert">Project could not be loaded. <button onClick={() => {
           setStatus('loading')
           setAttempt((value) => value + 1)
         }}>Retry</button></p>}
-        {status === 'ready' && currentProject && <>
-          <h1>{currentProject.title}</h1>
-          {currentProject.description && <p className="projectDescription">{currentProject.description}</p>}
-          <ProjectTasks key={id} projectId={id} getToken={getToken} />
+        {status === 'ready' && project && <>
+          <h1>{project.title}</h1>
+          {project.description && <p className="projectDescription">{project.description}</p>}
+          <ProjectInvitations projectId={id} getToken={getToken} />
+          <ProjectTasks projectId={id} getToken={getToken} />
         </>}
       </main>
     </>
