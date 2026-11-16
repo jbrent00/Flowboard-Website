@@ -688,4 +688,3 @@ export default function App({ getToken }) {
     </main>
   )
 }
-//comment

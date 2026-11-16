@@ -12,7 +12,7 @@
 .body h2 { margin: 16px 0 8px; font-size: 16px; }
 .form { display: grid; gap: 8px; }
 .form label { font-size: 14px; font-weight: 600; }
-.form input, .form select {
+.form input, .form select, .rowActions select {
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -23,6 +23,7 @@
   color: inherit;
   font: inherit;
 }
+.rowActions select { width: auto; }
 
 .body button {
   padding: 8px 12px;
@@ -38,3 +39,6 @@
 .list li > div { min-width: 0; }
 .meta { color: #5d6878; font-size: 14px; }
 .error { color: #a52828; }
+.inbox { padding-top: 12px; }
+.inbox h2 { margin-top: 0; }
+.rowActions { display: flex; flex-wrap: wrap; gap: 8px; }

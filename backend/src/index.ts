@@ -5,6 +5,7 @@ import { syncClerkUser } from './userProfile.js'
 import { taskRoutes } from './tasks.js'
 import { tagRoutes } from './tags.js'
 import { projectRoutes } from './projects.js'
+import { receivedInvitationRoutes } from './receivedInvitations.js'
 
 const app = express()
 const port = Number(process.env.PORT) || 3001
@@ -64,7 +65,7 @@ app.get('/api/me', clerkMiddleware(), async (request, response) => {
   }
 
   try {
-    const user = await syncClerkUser(userId)
+    const { user } = await syncClerkUser(userId)
     response.json({ id: user.id })
   } catch (error) {
     console.error('User synchronization failed', error)
@@ -101,6 +102,7 @@ app.use('/api/projects', clerkMiddleware(), (request, response, next) => {
 })
 
 app.use('/api/projects', express.json({ limit: '16kb' }), projectRoutes)
+app.use('/api/project-invitations', clerkMiddleware(), receivedInvitationRoutes)
 
 app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`)

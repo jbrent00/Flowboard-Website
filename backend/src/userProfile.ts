@@ -26,6 +26,6 @@ export async function syncClerkUser(userId: string) {
         data: emailKeys.map((normalizedEmail) => ({ userId, normalizedEmail })),
       })
     }
-    return user
+    return { user, emailKeys }
   })
 }

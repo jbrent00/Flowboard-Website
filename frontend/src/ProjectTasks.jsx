@@ -16,7 +16,7 @@ function localDate(value) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 }
 
-export default function ProjectTasks({ projectId, getToken }) {
+export default function ProjectTasks({ projectId, getToken, canEdit }) {
   const [tasks, setTasks] = useState([])
   const [tags, setTags] = useState([])
   const [status, setStatus] = useState('loading')
@@ -148,8 +148,9 @@ export default function ProjectTasks({ projectId, getToken }) {
   }}>Retry</button></p>
 
   return <>
-    <TagManager tags={tags} scope="project" onCreate={addTag} onUpdate={editTag} onDelete={removeTag} />
-    <form className="projectTaskForm" onSubmit={addTask}>
+    {!canEdit && <p>You have view-only access to this project.</p>}
+    {canEdit && <TagManager tags={tags} scope="project" onCreate={addTag} onUpdate={editTag} onDelete={removeTag} />}
+    {canEdit && <form className="projectTaskForm" onSubmit={addTask}>
       <h2>Add project task</h2>
       <label htmlFor="project-task-title">Title</label>
       <input id="project-task-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} required />
@@ -157,14 +158,14 @@ export default function ProjectTasks({ projectId, getToken }) {
       <textarea id="project-task-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} />
       <TagChoices tags={tags} scope="project" selectedIds={selectedTagIds} onChange={setSelectedTagIds} disabled={busy !== null} />
       <button type="submit" disabled={busy !== null}>Add task</button>
-    </form>
+    </form>}
     {error && <p className="projectTaskError" role="alert">{error}</p>}
     <div className="projectBoard" aria-label="Project task board">
       {columns.map((column) => <section key={column.status} className="projectColumn">
         <h2>{column.label}</h2>
         {tasks.filter((task) => task.status === column.status).length === 0 && <p>No project tasks yet.</p>}
         {tasks.filter((task) => task.status === column.status).sort((a, b) => a.orderIndex - b.orderIndex || a.id - b.id).map((task) => <article className="projectTask" key={task.id}>
-          {editingId === task.id ? <form className="projectTaskEdit" onSubmit={saveEdit}>
+          {canEdit && editingId === task.id ? <form className="projectTaskEdit" onSubmit={saveEdit}>
             <label>Title<input value={edit.title} onChange={(event) => setEdit({ ...edit, title: event.target.value })} maxLength={100} required /></label>
             <label>Description<textarea value={edit.description} onChange={(event) => setEdit({ ...edit, description: event.target.value })} maxLength={500} /></label>
             <label>Priority<select value={edit.priority} onChange={(event) => setEdit({ ...edit, priority: event.target.value })}>
@@ -184,13 +185,15 @@ export default function ProjectTasks({ projectId, getToken }) {
             {task.tagIds.length > 0 && <div className={styles.cardTags}>
               {tags.filter((tag) => task.tagIds.includes(tag.id)).map((tag) => <TagBadge key={tag.id} tag={tag} />)}
             </div>}
-            <label className="projectTaskStatus">Status<select value={task.status} disabled={busy !== null} onChange={(event) => moveTask(task, event.target.value)}>
-              {columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}
-            </select></label>
-            <div className="projectTaskActions">
-              <button type="button" disabled={busy !== null} onClick={() => startEdit(task)}>Edit</button>
-              <button type="button" disabled={busy !== null} onClick={() => removeTask(task)}>Delete</button>
-            </div>
+            {canEdit && <>
+              <label className="projectTaskStatus">Status<select value={task.status} disabled={busy !== null} onChange={(event) => moveTask(task, event.target.value)}>
+                {columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}
+              </select></label>
+              <div className="projectTaskActions">
+                <button type="button" disabled={busy !== null} onClick={() => startEdit(task)}>Edit</button>
+                <button type="button" disabled={busy !== null} onClick={() => removeTask(task)}>Delete</button>
+              </div>
+            </>}
           </>}
         </article>)}
       </section>)}

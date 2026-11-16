@@ -4,11 +4,13 @@ import type { ProjectTask } from './generated/prisma/client.js'
 import { getPrisma } from './prisma.js'
 import { projectId, projectRole } from './projectAccess.js'
 import { projectInvitationRoutes } from './projectInvitations.js'
+import { projectMemberRoutes } from './projectMembers.js'
 import { projectTagRoutes } from './projectTags.js'
 import { parseTagIds } from './tagValidation.js'
 
 export const projectRoutes = Router()
 projectRoutes.use('/:id/invitations', projectInvitationRoutes)
+projectRoutes.use('/:id/members', projectMemberRoutes)
 projectRoutes.use('/:id/tags', projectTagRoutes)
 
 const projectTaskInclude = { taskTags: { select: { tagId: true } } } as const
@@ -107,10 +109,10 @@ projectRoutes.get('/', async (request, response) => {
   }
   try {
     const projects = await getPrisma().project.findMany({
-      where: { memberships: { some: { userId, role: 'owner' } } },
+      where: { memberships: { some: { userId } } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     })
-    response.json(projects)
+    response.set('Cache-Control', 'no-store').json(projects)
   } catch (error) {
     console.error('Could not load projects', error)
     response.status(503).json({ error: 'Projects could not be loaded' })
@@ -158,14 +160,15 @@ projectRoutes.get('/:id', async (request, response) => {
     return
   }
   try {
-    const project = await getPrisma().project.findFirst({
-      where: { id, memberships: { some: { userId, role: 'owner' } } },
+    const membership = await getPrisma().projectMembership.findUnique({
+      where: { projectId_userId: { projectId: id, userId } },
+      select: { project: true, role: true },
     })
-    if (!project) {
+    if (!membership) {
       response.status(404).json({ error: 'Project not found' })
       return
     }
-    response.json(project)
+    response.set('Cache-Control', 'no-store').json({ ...membership.project, role: membership.role })
   } catch (error) {
     console.error('Could not load project', error)
     response.status(503).json({ error: 'Project could not be loaded' })

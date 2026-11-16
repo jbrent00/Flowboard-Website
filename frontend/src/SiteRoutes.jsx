@@ -2,7 +2,9 @@ import { RedirectToSignIn, SignIn, SignUp, UserButton, useAuth } from '@clerk/re
 import { useEffect, useState } from 'react'
 import { Link, Navigate, Route, Routes, useParams } from 'react-router'
 import App from './App.jsx'
+import InvitationInbox from './InvitationInbox.jsx'
 import ProjectInvitations from './ProjectInvitations.jsx'
+import ProjectMembers from './ProjectMembers.jsx'
 import ProjectTasks from './ProjectTasks.jsx'
 import { backendBaseUrl, listTasks } from './taskApi.js'
 
@@ -116,12 +118,18 @@ function ProtectedBoard() {
 
 function ProjectList() {
   const { isLoaded, userId, getToken } = useAuth()
+  if (!isLoaded) return <main className="authShell"><p>Loading projects...</p></main>
+  if (!userId) return <RedirectToSignIn />
+
+  return <MemberProjectList key={userId} getToken={getToken} />
+}
+
+function MemberProjectList({ getToken }) {
   const [projects, setProjects] = useState([])
   const [status, setStatus] = useState('loading')
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    if (!isLoaded || !userId) return
     const controller = new AbortController()
     async function loadProjects() {
       try {
@@ -143,10 +151,7 @@ function ProjectList() {
     }
     loadProjects()
     return () => controller.abort()
-  }, [isLoaded, userId, getToken, attempt])
-
-  if (!isLoaded) return <main className="authShell"><p>Loading projects...</p></main>
-  if (!userId) return <RedirectToSignIn />
+  }, [getToken, attempt])
 
   return (
     <>
@@ -157,6 +162,7 @@ function ProjectList() {
       </div>
       <main className="projectPage">
         <h1>Projects</h1>
+        <InvitationInbox getToken={getToken} onJoin={() => setAttempt((value) => value + 1)} />
         {status === 'loading' && <p role="status">Loading projects...</p>}
         {status === 'error' && <p role="alert">Projects could not be loaded. <button onClick={() => {
           setStatus('loading')
@@ -181,10 +187,10 @@ function ProjectBoard() {
   if (!isLoaded) return <main className="authShell"><p>Loading project...</p></main>
   if (!userId) return <RedirectToSignIn />
 
-  return <OwnedProjectBoard key={`${userId}:${id}`} id={id} getToken={getToken} />
+  return <MemberProjectBoard key={`${userId}:${id}`} id={id} userId={userId} getToken={getToken} />
 }
 
-function OwnedProjectBoard({ id, getToken }) {
+function MemberProjectBoard({ id, userId, getToken }) {
   const [project, setProject] = useState(null)
   const [status, setStatus] = useState('loading')
   const [attempt, setAttempt] = useState(0)
@@ -234,8 +240,9 @@ function OwnedProjectBoard({ id, getToken }) {
         {status === 'ready' && project && <>
           <h1>{project.title}</h1>
           {project.description && <p className="projectDescription">{project.description}</p>}
-          <ProjectInvitations projectId={id} getToken={getToken} />
-          <ProjectTasks projectId={id} getToken={getToken} />
+          <ProjectMembers projectId={id} userId={userId} isOwner={project.role === 'owner'} getToken={getToken} />
+          {project.role === 'owner' && <ProjectInvitations projectId={id} getToken={getToken} />}
+          <ProjectTasks projectId={id} getToken={getToken} canEdit={project.role === 'owner' || project.role === 'editor'} />
         </>}
       </main>
     </>
