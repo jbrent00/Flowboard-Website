@@ -7,7 +7,10 @@ async function request(token, projectId, path = '', options = {}) {
     ...options,
     headers: { Authorization: `Bearer ${token}`, ...options.headers },
   })
-  if (!response.ok) throw new Error(`Project task service returned ${response.status}.`)
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error || `Project task service returned ${response.status}.`)
+  }
   return response.status === 204 ? null : response.json()
 }
 

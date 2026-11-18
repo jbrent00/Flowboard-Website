@@ -69,6 +69,9 @@ body { margin: 0; }
   border-radius: 6px; background: #fff; color: #243044; font: inherit;
 }
 .projectTaskForm textarea, .projectTaskEdit textarea { min-height: 80px; resize: vertical; }
+.projectAssigneeChoices { min-width: 0; margin: 0; padding: 4px 12px; border: 1px solid #aab5c2; border-radius: 6px; font-size: 14px; overflow-wrap: anywhere; }
+.projectAssigneeChoices label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.projectAssigneeChoices input { flex: none; margin: 0; }
 .projectTaskForm button { justify-self: start; }
 .projectTaskForm button, .projectTaskActions button { padding: 8px 12px; border: 1px solid #31547e; border-radius: 6px; background: #31547e; color: #fff; }
 .projectTaskForm button:disabled, .projectTaskActions button:disabled { opacity: .55; cursor: wait; }
@@ -82,6 +85,7 @@ body { margin: 0; }
 .projectTaskActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .projectTaskActions button:last-child { background: #fff; color: #31547e; }
 .projectPage button { min-height: 44px; color: #31547e; font: inherit; cursor: pointer; }
+.projectArchiveAction { margin-bottom: 16px; padding: 8px 12px; border: 1px solid #31547e; border-radius: 6px; background: #fff; }
 .projectPage .projectTaskForm button, .projectPage .projectTaskActions button { color: #fff; }
 .projectPage .projectTaskActions button:last-child { color: #31547e; }
 .projectPage :focus-visible { outline: 2px solid #31547e; outline-offset: 3px; }

@@ -1,5 +1,9 @@
 import { backendBaseUrl } from './taskApi.js'
 
+export function memberName({ firstName, lastName, primaryEmail }) {
+  return [firstName, lastName].filter(Boolean).join(' ') || primaryEmail || 'Project member'
+}
+
 async function request(token, projectId, path = '', options = {}) {
   if (!backendBaseUrl) throw new Error('Project service URL is not configured.')
   if (!token) throw new Error('Sign in again to access project members.')

@@ -38,6 +38,7 @@ model Project {
   description String?
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
+  archivedAt  DateTime?
   memberships ProjectMembership[]
   tasks       ProjectTask[]
   tags        ProjectTag[]
@@ -51,6 +52,7 @@ model ProjectMembership {
   joinedAt  DateTime    @default(now())
   project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments ProjectTaskAssignment[]
 
   @@id([projectId, userId])
   @@index([userId, role])
@@ -90,8 +92,21 @@ model ProjectTask {
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
   taskTags    ProjectTaskTag[]
+  assignments ProjectTaskAssignment[]
 
   @@index([projectId, status, orderIndex])
+  @@unique([projectId, id])
+}
+
+model ProjectTaskAssignment {
+  projectId Int
+  taskId    Int
+  userId    String
+  task      ProjectTask       @relation(fields: [projectId, taskId], references: [projectId, id], onDelete: Cascade)
+  member    ProjectMembership @relation(fields: [projectId, userId], references: [projectId, userId], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([projectId, userId])
 }
 
 model ProjectTag {

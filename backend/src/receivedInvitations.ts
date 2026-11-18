@@ -25,7 +25,7 @@ receivedInvitationRoutes.get('/', async (request, response) => {
 
   const emailKeys = await currentVerifiedEmails(userId)
   const invitations = await getPrisma().projectInvitation.findMany({
-    where: pendingInvitations(emailKeys),
+    where: { ...pendingInvitations(emailKeys), project: { archivedAt: null } },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     select: {
       id: true, email: true, role: true, expiresAt: true,
@@ -52,7 +52,7 @@ async function respondToInvitation(request: Request, response: Response, status:
     : await currentVerifiedEmails(userId)
   const invitation = await getPrisma().$transaction(async (tx) => {
     const [claimed] = await tx.projectInvitation.updateManyAndReturn({
-      where: { id, ...pendingInvitations(emailKeys) },
+      where: { id, ...pendingInvitations(emailKeys), project: { archivedAt: null } },
       data: { status },
       select: { projectId: true, role: true },
     })

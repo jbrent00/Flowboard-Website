@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AssigneeChoices, TaskAssignees } from './ProjectAssignees.jsx'
 import { createProjectTask, deleteProjectTask, listProjectTasks, updateProjectTask } from './projectTaskApi.js'
 import { createTag, deleteTag, listTags, updateTag } from './tagApi.js'
 import TagManager, { TagBadge, TagChoices } from './TagManager.jsx'
@@ -16,7 +17,7 @@ function localDate(value) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 }
 
-export default function ProjectTasks({ projectId, getToken, canEdit }) {
+export default function ProjectTasks({ projectId, getToken, canEdit, canAssign, members, memberStatus }) {
   const [tasks, setTasks] = useState([])
   const [tags, setTags] = useState([])
   const [status, setStatus] = useState('loading')
@@ -24,6 +25,7 @@ export default function ProjectTasks({ projectId, getToken, canEdit }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [selectedTagIds, setSelectedTagIds] = useState([])
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [edit, setEdit] = useState(null)
   const [busy, setBusy] = useState(null)
@@ -86,7 +88,7 @@ export default function ProjectTasks({ projectId, getToken, canEdit }) {
   function startEdit(task) {
     setEditingId(task.id)
     setEdit({ title: task.title, description: task.description ?? '',
-      priority: task.priority, dueDate: localDate(task.dueDate),
+      priority: task.priority, dueDate: localDate(task.dueDate), assigneeIds: null,
       tagIds: tags.filter((tag) => task.tagIds.includes(tag.id)).map((tag) => tag.id) })
     setError('')
   }
@@ -99,17 +101,24 @@ export default function ProjectTasks({ projectId, getToken, canEdit }) {
     return true
   }
 
+  function assignmentFields(selectedIds) {
+    if (!canAssign || memberStatus !== 'ready' || selectedIds === null) return {}
+    return { assigneeIds: members.filter((member) => selectedIds.includes(member.userId)).map((member) => member.userId) }
+  }
+
   function addTask(event) {
     event.preventDefault()
     if (!valid(title, description)) return
     save(async (token) => {
       const saved = await createProjectTask(token, projectId, {
         title: title.trim(), description: description.trim(), tagIds: selectedTagIds,
+        ...assignmentFields(selectedAssigneeIds),
       })
       setTasks((current) => [...current, saved])
       setTitle('')
       setDescription('')
       setSelectedTagIds([])
+      setSelectedAssigneeIds([])
     }, 'create')
   }
 
@@ -121,6 +130,7 @@ export default function ProjectTasks({ projectId, getToken, canEdit }) {
         title: edit.title.trim(), description: edit.description.trim(), priority: edit.priority,
         dueDate: edit.dueDate ? new Date(edit.dueDate).toISOString() : null,
         tagIds: edit.tagIds,
+        ...assignmentFields(edit.assigneeIds),
       })
       replaceTask(saved)
       setEditingId(null)
@@ -157,6 +167,8 @@ export default function ProjectTasks({ projectId, getToken, canEdit }) {
       <label htmlFor="project-task-description">Description (optional)</label>
       <textarea id="project-task-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} />
       <TagChoices tags={tags} scope="project" selectedIds={selectedTagIds} onChange={setSelectedTagIds} disabled={busy !== null} />
+      {canAssign && <AssigneeChoices members={members} status={memberStatus} selectedIds={selectedAssigneeIds}
+        onChange={setSelectedAssigneeIds} disabled={busy !== null} />}
       <button type="submit" disabled={busy !== null}>Add task</button>
     </form>}
     {error && <p className="projectTaskError" role="alert">{error}</p>}
@@ -174,6 +186,8 @@ export default function ProjectTasks({ projectId, getToken, canEdit }) {
             <label>Due date<input type="datetime-local" value={edit.dueDate} onChange={(event) => setEdit({ ...edit, dueDate: event.target.value })} /></label>
             <TagChoices tags={tags} scope="project" selectedIds={edit.tagIds} disabled={busy !== null}
               onChange={(tagIds) => setEdit({ ...edit, tagIds })} />
+            {canAssign && <AssigneeChoices members={members} status={memberStatus} disabled={busy !== null}
+              selectedIds={edit.assigneeIds ?? task.assigneeIds ?? []} onChange={(assigneeIds) => setEdit({ ...edit, assigneeIds })} />}
             <div className="projectTaskActions">
               <button type="submit" disabled={busy !== null}>Save</button>
               <button type="button" disabled={busy !== null} onClick={() => setEditingId(null)}>Cancel</button>
@@ -182,6 +196,7 @@ export default function ProjectTasks({ projectId, getToken, canEdit }) {
             <h3>{task.title}</h3>
             {task.description && <p className="projectTaskDescription">{task.description}</p>}
             <p>Priority: {task.priority}{task.dueDate ? ` · Due: ${new Date(task.dueDate).toLocaleString()}` : ''}</p>
+            <TaskAssignees members={members} assigneeIds={task.assigneeIds ?? []} />
             {task.tagIds.length > 0 && <div className={styles.cardTags}>
               {tags.filter((tag) => task.tagIds.includes(tag.id)).map((tag) => <TagBadge key={tag.id} tag={tag} />)}
             </div>}
