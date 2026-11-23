@@ -7,7 +7,7 @@
 }
 
 .panel summary { min-height: 44px; padding: 10px 12px; font-weight: 600; cursor: pointer; }
-.body { padding: 0 12px 12px; overflow-wrap: anywhere; }
+.body { min-width: 0; padding: 0 12px 12px; overflow-wrap: anywhere; }
 .body p { margin: 8px 0; }
 .body h2 { margin: 16px 0 8px; font-size: 16px; }
 .form { display: grid; gap: 8px; }
@@ -39,6 +39,9 @@
 .list li > div { min-width: 0; }
 .meta { color: #5d6878; font-size: 14px; }
 .error { color: #a52828; }
-.inbox { padding-top: 12px; }
+.inbox { max-width: none; padding-top: 12px; }
 .inbox h2 { margin-top: 0; }
-.rowActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.rowActions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; max-width: 100%; }
+
+.body button.danger { justify-self: start; border-color: #a52828; color: #a52828; }
+.body button:disabled { opacity: .55; cursor: not-allowed; }

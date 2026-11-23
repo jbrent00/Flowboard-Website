@@ -1,7 +1,7 @@
 import { getAuth } from '@clerk/express'
 import { Router, type Request, type Response } from 'express'
 import { getPrisma } from './prisma.js'
-import { projectId, projectRole } from './projectAccess.js'
+import { canWriteProjectContent, projectId, projectRole } from './projectAccess.js'
 import { tagInput } from './tagValidation.js'
 
 export const projectTagRoutes = Router({ mergeParams: true })
@@ -22,7 +22,7 @@ async function tagProject(request: Request, response: Response, write = false) {
     response.status(404).json({ error: 'Project not found' })
     return null
   }
-  if (write && role === 'viewer') {
+  if (write && !canWriteProjectContent(role)) {
     response.status(403).json({ error: 'Viewers cannot manage project tags' })
     return null
   }

@@ -47,23 +47,39 @@ body { margin: 0; }
 .workspaceNav { display: flex; flex-wrap: wrap; gap: 16px; }
 .workspaceNav a { display: inline-flex; min-height: 44px; align-items: center; }
 .projectPage { width: min(1200px, 100%); margin: 0 auto; padding: 40px 24px; }
-.projectPage h1 { margin: 0 0 24px; font-size: 30px; }
-.projectList { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
-.projectList li { padding: 18px; border: 1px solid #dce2e9; border-radius: 8px; background: #fff; }
-.projectList h2 { margin: 0; font-size: 18px; }
+.projectPage h1 { margin: 0 0 24px; font-size: clamp(26px, 3vw, 30px); overflow-wrap: anywhere; }
+.projectHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.projectHeading { min-width: 0; }
+.projectHeader h1 { margin-bottom: 8px; }
+.projectHeader .projectDescription { margin: 0; }
+.projectHeader .projectArchiveAction { flex: none; margin: 0; }
+.projectManagement { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 16px; margin-bottom: 24px; }
+.projectManagement > details { min-width: 0; max-width: none; margin: 0; }
+.projectTags { min-width: 0; overflow-wrap: anywhere; }
+.projectTags > details { max-width: none; }
+.projectPage input, .projectPage textarea, .projectPage select { max-width: 100%; }
+.projectList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.projectList li { min-width: 0; padding: 18px; border: 1px solid #dce2e9; border-radius: 8px; background: #fff; }
+.projectList h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
 .projectList a, .projectBack { color: #31547e; }
 .projectList p { margin: 8px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
 .projectBack { display: inline-flex; min-height: 44px; align-items: center; margin-bottom: 16px; }
 .projectDescription { max-width: 70ch; margin: -8px 0 24px; line-height: 1.5; overflow-wrap: anywhere; }
 .projectBoard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .projectColumn { min-width: 0; min-height: 180px; padding: 18px; border: 1px solid #dce2e9; border-radius: 8px; background: #fff; }
-.projectColumn h2 { margin: 0 0 20px; font-size: 18px; }
+.projectColumnHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.projectColumnHeader h2 { margin: 0; font-size: 18px; }
+.projectColumnHeader span { color: #5d6878; font-size: 14px; }
 .projectColumn p { margin: 0; color: #5d6878; font-size: 14px; }
 .projectTaskForm, .projectTask { padding: 16px; border: 1px solid #dce2e9; border-radius: 8px; background: #fff; }
-.projectTaskForm { display: grid; gap: 8px; width: min(560px, 100%); margin: 0 0 24px; }
+.projectTaskForm { display: grid; gap: 16px; width: 100%; margin: 0 0 24px; }
+.projectTaskFields, .projectTaskOptions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; min-width: 0; }
+.projectTaskOptions fieldset { min-width: 0; margin: 0; }
+.projectTaskOptions label { min-height: 44px; }
+.projectTaskFields label { display: grid; gap: 6px; min-width: 0; font-size: 14px; font-weight: 600; }
 .projectTaskForm h2 { margin: 0 0 8px; font-size: 18px; }
 .projectTaskForm > label, .projectTaskEdit > label, .projectTaskStatus { display: grid; gap: 6px; font-size: 14px; font-weight: 600; }
-.projectTaskForm > input, .projectTaskForm textarea, .projectTaskEdit > label > input, .projectTaskEdit textarea,
+.projectTaskFields input, .projectTaskForm textarea, .projectTaskEdit > label > input, .projectTaskEdit textarea,
 .projectTaskEdit select, .projectTaskStatus select {
   width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid #aab5c2;
   border-radius: 6px; background: #fff; color: #243044; font: inherit;
@@ -84,7 +100,7 @@ body { margin: 0; }
 .projectTaskEdit { display: grid; gap: 12px; }
 .projectTaskActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .projectTaskActions button:last-child { background: #fff; color: #31547e; }
-.projectPage button { min-height: 44px; color: #31547e; font: inherit; cursor: pointer; }
+.projectPage button { min-height: 44px; max-width: 100%; overflow-wrap: anywhere; color: #31547e; font: inherit; cursor: pointer; }
 .projectArchiveAction { margin-bottom: 16px; padding: 8px 12px; border: 1px solid #31547e; border-radius: 6px; background: #fff; }
 .projectPage .projectTaskForm button, .projectPage .projectTaskActions button { color: #fff; }
 .projectPage .projectTaskActions button:last-child { color: #31547e; }
@@ -103,9 +119,25 @@ body { margin: 0; }
 .accountActions button:disabled { cursor: wait; }
 .serviceStatus { width: min(1200px, 100%); margin: 8px auto 0; padding: 0 24px; font-size: 14px; }
 
+@media (max-width: 1100px) {
+  .projectManagement { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 960px) {
+  .projectBoard { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 800px) {
   .accountBar { padding: 16px 16px 0; }
   .projectPage { padding: 32px 16px; }
-  .projectBoard { grid-template-columns: 1fr; }
   .serviceStatus { padding: 0 16px; }
+}
+
+@media (max-width: 640px) {
+  .projectAccountBar .workspaceNav { order: 1; flex-basis: 100%; }
+  .projectHeader { flex-direction: column; gap: 16px; }
+  .projectManagement, .projectList, .projectTaskFields, .projectTaskOptions { grid-template-columns: 1fr; }
+  .projectTaskForm, .projectColumn { padding: 14px; }
+  .projectTaskForm > button { width: 100%; }
+  .projectTaskActions button { flex: 1; }
 }

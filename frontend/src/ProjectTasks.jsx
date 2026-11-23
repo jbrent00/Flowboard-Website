@@ -159,59 +159,76 @@ export default function ProjectTasks({ projectId, getToken, canEdit, canAssign, 
 
   return <>
     {!canEdit && <p>You have view-only access to this project.</p>}
-    {canEdit && <TagManager tags={tags} scope="project" onCreate={addTag} onUpdate={editTag} onDelete={removeTag} />}
+    {canEdit && <div className="projectTags">
+      <TagManager tags={tags} scope="project" onCreate={addTag} onUpdate={editTag} onDelete={removeTag} />
+    </div>}
     {canEdit && <form className="projectTaskForm" onSubmit={addTask}>
       <h2>Add project task</h2>
-      <label htmlFor="project-task-title">Title</label>
-      <input id="project-task-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} required />
-      <label htmlFor="project-task-description">Description (optional)</label>
-      <textarea id="project-task-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} />
-      <TagChoices tags={tags} scope="project" selectedIds={selectedTagIds} onChange={setSelectedTagIds} disabled={busy !== null} />
-      {canAssign && <AssigneeChoices members={members} status={memberStatus} selectedIds={selectedAssigneeIds}
-        onChange={setSelectedAssigneeIds} disabled={busy !== null} />}
+      <div className="projectTaskFields">
+        <label htmlFor="project-task-title">Title
+          <input id="project-task-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} required />
+        </label>
+        <label htmlFor="project-task-description">Description (optional)
+          <textarea id="project-task-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} />
+        </label>
+      </div>
+      <div className="projectTaskOptions">
+        <TagChoices tags={tags} scope="project" selectedIds={selectedTagIds} onChange={setSelectedTagIds} disabled={busy !== null} />
+        {canAssign && <AssigneeChoices members={members} status={memberStatus} selectedIds={selectedAssigneeIds}
+          onChange={setSelectedAssigneeIds} disabled={busy !== null} />}
+      </div>
       <button type="submit" disabled={busy !== null}>Add task</button>
     </form>}
     {error && <p className="projectTaskError" role="alert">{error}</p>}
     <div className="projectBoard" aria-label="Project task board">
-      {columns.map((column) => <section key={column.status} className="projectColumn">
-        <h2>{column.label}</h2>
-        {tasks.filter((task) => task.status === column.status).length === 0 && <p>No project tasks yet.</p>}
-        {tasks.filter((task) => task.status === column.status).sort((a, b) => a.orderIndex - b.orderIndex || a.id - b.id).map((task) => <article className="projectTask" key={task.id}>
-          {canEdit && editingId === task.id ? <form className="projectTaskEdit" onSubmit={saveEdit}>
-            <label>Title<input value={edit.title} onChange={(event) => setEdit({ ...edit, title: event.target.value })} maxLength={100} required /></label>
-            <label>Description<textarea value={edit.description} onChange={(event) => setEdit({ ...edit, description: event.target.value })} maxLength={500} /></label>
-            <label>Priority<select value={edit.priority} onChange={(event) => setEdit({ ...edit, priority: event.target.value })}>
-              <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
-            </select></label>
-            <label>Due date<input type="datetime-local" value={edit.dueDate} onChange={(event) => setEdit({ ...edit, dueDate: event.target.value })} /></label>
-            <TagChoices tags={tags} scope="project" selectedIds={edit.tagIds} disabled={busy !== null}
-              onChange={(tagIds) => setEdit({ ...edit, tagIds })} />
-            {canAssign && <AssigneeChoices members={members} status={memberStatus} disabled={busy !== null}
-              selectedIds={edit.assigneeIds ?? task.assigneeIds ?? []} onChange={(assigneeIds) => setEdit({ ...edit, assigneeIds })} />}
-            <div className="projectTaskActions">
-              <button type="submit" disabled={busy !== null}>Save</button>
-              <button type="button" disabled={busy !== null} onClick={() => setEditingId(null)}>Cancel</button>
+      {columns.map((column) => {
+        const columnTasks = tasks.filter((task) => task.status === column.status)
+          .sort((a, b) => a.orderIndex - b.orderIndex || a.id - b.id)
+        return (
+          <section key={column.status} className="projectColumn">
+            <div className="projectColumnHeader">
+              <h2>{column.label}</h2>
+              <span aria-label={`${columnTasks.length} ${columnTasks.length === 1 ? 'task' : 'tasks'}`}>{columnTasks.length}</span>
             </div>
-          </form> : <>
-            <h3>{task.title}</h3>
-            {task.description && <p className="projectTaskDescription">{task.description}</p>}
-            <p>Priority: {task.priority}{task.dueDate ? ` · Due: ${new Date(task.dueDate).toLocaleString()}` : ''}</p>
-            <TaskAssignees members={members} assigneeIds={task.assigneeIds ?? []} />
-            {task.tagIds.length > 0 && <div className={styles.cardTags}>
-              {tags.filter((tag) => task.tagIds.includes(tag.id)).map((tag) => <TagBadge key={tag.id} tag={tag} />)}
-            </div>}
-            {canEdit && <>
-              <label className="projectTaskStatus">Status<select value={task.status} disabled={busy !== null} onChange={(event) => moveTask(task, event.target.value)}>
-                {columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}
-              </select></label>
-              <div className="projectTaskActions">
-                <button type="button" disabled={busy !== null} onClick={() => startEdit(task)}>Edit</button>
-                <button type="button" disabled={busy !== null} onClick={() => removeTask(task)}>Delete</button>
-              </div>
-            </>}
-          </>}
-        </article>)}
-      </section>)}
+            {columnTasks.length === 0 && <p>No project tasks yet.</p>}
+            {columnTasks.map((task) => <article className="projectTask" key={task.id}>
+              {canEdit && editingId === task.id ? <form className="projectTaskEdit" onSubmit={saveEdit}>
+                <label>Title<input value={edit.title} onChange={(event) => setEdit({ ...edit, title: event.target.value })} maxLength={100} required /></label>
+                <label>Description<textarea value={edit.description} onChange={(event) => setEdit({ ...edit, description: event.target.value })} maxLength={500} /></label>
+                <label>Priority<select value={edit.priority} onChange={(event) => setEdit({ ...edit, priority: event.target.value })}>
+                  <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                </select></label>
+                <label>Due date<input type="datetime-local" value={edit.dueDate} onChange={(event) => setEdit({ ...edit, dueDate: event.target.value })} /></label>
+                <TagChoices tags={tags} scope="project" selectedIds={edit.tagIds} disabled={busy !== null}
+                  onChange={(tagIds) => setEdit({ ...edit, tagIds })} />
+                {canAssign && <AssigneeChoices members={members} status={memberStatus} disabled={busy !== null}
+                  selectedIds={edit.assigneeIds ?? task.assigneeIds ?? []} onChange={(assigneeIds) => setEdit({ ...edit, assigneeIds })} />}
+                <div className="projectTaskActions">
+                  <button type="submit" disabled={busy !== null}>Save</button>
+                  <button type="button" disabled={busy !== null} onClick={() => setEditingId(null)}>Cancel</button>
+                </div>
+              </form> : <>
+                <h3>{task.title}</h3>
+                {task.description && <p className="projectTaskDescription">{task.description}</p>}
+                <p>Priority: {task.priority}{task.dueDate ? ` · Due: ${new Date(task.dueDate).toLocaleString()}` : ''}</p>
+                <TaskAssignees members={members} assigneeIds={task.assigneeIds ?? []} />
+                {task.tagIds.length > 0 && <div className={styles.cardTags}>
+                  {tags.filter((tag) => task.tagIds.includes(tag.id)).map((tag) => <TagBadge key={tag.id} tag={tag} />)}
+                </div>}
+                {canEdit && <>
+                  <label className="projectTaskStatus">Status<select value={task.status} disabled={busy !== null} onChange={(event) => moveTask(task, event.target.value)}>
+                    {columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}
+                  </select></label>
+                  <div className="projectTaskActions">
+                    <button type="button" aria-label={`Edit ${task.title}`} disabled={busy !== null} onClick={() => startEdit(task)}>Edit</button>
+                    <button type="button" aria-label={`Delete ${task.title}`} disabled={busy !== null} onClick={() => removeTask(task)}>Delete</button>
+                  </div>
+                </>}
+              </>}
+            </article>)}
+          </section>
+        )
+      })}
     </div>
   </>
 }

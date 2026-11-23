@@ -1,10 +1,12 @@
 import { getAuth } from '@clerk/express'
-import { Router } from 'express'
-import type { Prisma, ProjectTask } from './generated/prisma/client.js'
+import { Router, type Response } from 'express'
+import type { Prisma, ProjectRole, ProjectTask } from './generated/prisma/client.js'
 import { getPrisma } from './prisma.js'
-import { projectId, projectRole } from './projectAccess.js'
+import { canCreateProjectTask, canEditProjectTask, canSetProjectTaskAssignees, canWriteProjectContent,
+  isProjectOwner, projectId, projectRole } from './projectAccess.js'
 import { projectInvitationRoutes } from './projectInvitations.js'
 import { projectMemberRoutes } from './projectMembers.js'
+import { projectLifecycleRoutes } from './projectLifecycle.js'
 import { projectTagRoutes } from './projectTags.js'
 import { parseTagIds } from './tagValidation.js'
 
@@ -19,7 +21,7 @@ projectRoutes.patch('/:id/archive', async (request, response) => {
   try {
     const role = await projectRole(id, userId)
     if (!role) return void response.status(404).json({ error: 'Project not found' })
-    if (role !== 'owner') return void response.status(403).json({ error: 'Only the owner can archive or restore this project' })
+    if (!isProjectOwner(role)) return void response.status(403).json({ error: 'Only the owner can archive or restore this project' })
     const project = await getPrisma().project.update({
       where: { id, memberships: { some: { userId, role: 'owner' } } },
       data: { archivedAt: archived ? new Date() : null },
@@ -31,6 +33,9 @@ projectRoutes.patch('/:id/archive', async (request, response) => {
     response.status(503).json({ error: 'Project archive state could not be saved' })
   }
 })
+
+// Deletion is also available to owners of archived projects.
+projectRoutes.use('/:id', projectLifecycleRoutes)
 
 projectRoutes.use('/:id', async (request, response, next) => {
   if (request.method === 'GET' || request.method === 'HEAD') return next()
@@ -74,27 +79,37 @@ function parseAssigneeIds(value: unknown) {
   return ids
 }
 
-async function projectHasAssignees(id: number, assigneeIds: string[]) {
-  if (assigneeIds.length === 0) return true
-  const count = await getPrisma().projectMembership.count({
+async function validateProjectAssignees(tx: Prisma.TransactionClient, id: number, role: ProjectRole, assigneeIds?: string[]) {
+  if (!assigneeIds) return
+  if (!canSetProjectTaskAssignees(role)) throw new ProjectWriteError(403, 'Only project owners can set assignees')
+  if (assigneeIds.length === 0) return
+  const count = await tx.projectMembership.count({
     where: { projectId: id, userId: { in: assigneeIds } },
   })
-  return count === assigneeIds.length
+  if (count !== assigneeIds.length) throw new ProjectWriteError(400, 'Assignees must be members of this project')
 }
 
-async function projectOwnsTags(id: number, tagIds: number[]) {
+async function projectOwnsTags(tx: Prisma.TransactionClient, id: number, tagIds: number[]) {
   if (tagIds.length === 0) return true
-  return await getPrisma().projectTag.count({ where: { projectId: id, id: { in: tagIds } } }) === tagIds.length
+  return await tx.projectTag.count({ where: { projectId: id, id: { in: tagIds } } }) === tagIds.length
 }
+
+const taskPolicyKeys = ['editorsCanCreateTasks', 'editorsCanEditAllTasks'] as const
 
 function projectInput(body: unknown, partial: boolean) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null
   const input = body as Record<string, unknown>
   const keys = Object.keys(input)
-  if (keys.some((key) => key !== 'title' && key !== 'description') ||
+  const allowedKeys = ['title', 'description', ...(partial ? taskPolicyKeys : [])]
+  if (keys.some((key) => !allowedKeys.includes(key)) ||
       (partial && keys.length === 0) || (!partial && !('title' in input))) return null
 
-  const changes: { title?: string; description?: string | null } = {}
+  const changes: { title?: string; description?: string | null; editorsCanCreateTasks?: boolean; editorsCanEditAllTasks?: boolean } = {}
+  for (const key of taskPolicyKeys) {
+    if (!(key in input)) continue
+    if (typeof input[key] !== 'boolean') return null
+    changes[key] = input[key]
+  }
   if ('title' in input) {
     if (typeof input.title !== 'string') return null
     const title = input.title.trim()
@@ -114,17 +129,49 @@ function missingProject(error: unknown) {
   return error !== null && typeof error === 'object' && 'code' in error && error.code === 'P2025'
 }
 
-class ArchivedProjectError extends Error {}
+class ProjectWriteError extends Error {
+  constructor(readonly status: 400 | 403 | 404, message: string) {
+    super(message)
+  }
+}
 
-function writeProjectTask<T>(id: number, write: (tx: Prisma.TransactionClient) => Promise<T>) {
+type TaskPolicy = { editorsCanCreateTasks: boolean; editorsCanEditAllTasks: boolean }
+type ProjectWriteAccess = TaskPolicy & { role: ProjectRole }
+
+function writeActiveProject<T>(id: number, userId: string, write: (tx: Prisma.TransactionClient, access: ProjectWriteAccess) => Promise<T>) {
   return getPrisma().$transaction(async (tx) => {
-    // Archiving updates the same project row and waits for an in-flight task write.
-    const active = await tx.$queryRaw<{ id: number }[]>`
-      SELECT "id" FROM "Project" WHERE "id" = ${id} AND "archivedAt" IS NULL FOR SHARE
+    // Serialize task writes with each other and with project policy changes.
+    const [project] = await tx.$queryRaw<(TaskPolicy & { archivedAt: Date | null })[]>`
+      SELECT "archivedAt", "editorsCanCreateTasks", "editorsCanEditAllTasks"
+      FROM "Project" WHERE "id" = ${id} FOR NO KEY UPDATE
     `
-    if (!active.length) throw new ArchivedProjectError()
-    return write(tx)
+    if (!project) throw new ProjectWriteError(404, 'Project not found')
+    const [member] = await tx.$queryRaw<{ role: ProjectRole }[]>`
+      SELECT "role" FROM "ProjectMembership" WHERE "projectId" = ${id} AND "userId" = ${userId} FOR SHARE
+    `
+    if (!member) throw new ProjectWriteError(404, 'Project not found')
+    if (project.archivedAt) throw new ProjectWriteError(403, 'Archived projects are read-only')
+    return write(tx, { ...project, role: member.role })
   })
+}
+
+async function editableProjectTask(tx: Prisma.TransactionClient, id: number, taskId: number, userId: string, access: ProjectWriteAccess) {
+  if (!canWriteProjectContent(access.role)) throw new ProjectWriteError(403, 'Viewers cannot change tasks')
+  const task = await tx.projectTask.findUniqueOrThrow({
+    where: { id: taskId, projectId: id }, include: { assignments: projectTaskInclude.assignments },
+  })
+  if (canEditProjectTask(access.role, access.editorsCanEditAllTasks, task, userId)) return task
+  throw new ProjectWriteError(403, 'You cannot change this project task')
+}
+
+function handleTaskWriteError(response: Response, error: unknown) {
+  if (error instanceof ProjectWriteError) {
+    response.status(error.status).json({ error: error.message })
+    return true
+  }
+  if (!missingProject(error)) return false
+  response.status(404).json({ error: 'Task not found' })
+  return true
 }
 
 function projectTaskChanges(body: unknown) {
@@ -307,33 +354,17 @@ projectRoutes.post('/:id/tasks', async (request, response) => {
     response.status(400).json({ error: 'Invalid task details' })
     return
   }
-  try {
-    const role = await projectRole(id, userId)
-    if (!role) {
-      response.status(404).json({ error: 'Project not found' })
-      return
+  await writeActiveProject(id, userId, async (tx, access) => {
+    if (!canCreateProjectTask(access.role, access.editorsCanCreateTasks)) {
+      throw new ProjectWriteError(403, 'You cannot create tasks in this project')
     }
-    if (role === 'viewer') {
-      response.status(403).json({ error: 'Viewers cannot create tasks' })
-      return
-    }
-    if (assigneeIds && role !== 'owner') {
-      response.status(403).json({ error: 'Only project owners can set assignees' })
-      return
-    }
-    if (assigneeIds && !await projectHasAssignees(id, assigneeIds)) {
-      response.status(400).json({ error: 'Assignees must be members of this project' })
-      return
-    }
-    if (!await projectOwnsTags(id, tagIds)) {
-      response.status(400).json({ error: 'Tags must belong to this project' })
-      return
-    }
-    const latest = await getPrisma().projectTask.aggregate({
+    await validateProjectAssignees(tx, id, access.role, assigneeIds)
+    if (!await projectOwnsTags(tx, id, tagIds)) throw new ProjectWriteError(400, 'Tags must belong to this project')
+    const latest = await tx.projectTask.aggregate({
       where: { projectId: id, status: 'todo' },
       _max: { orderIndex: true },
     })
-    const task = await writeProjectTask(id, (tx) => tx.projectTask.create({
+    return tx.projectTask.create({
       data: {
         title: title.trim(),
         description: typeof description === 'string' ? description.trim() || null : null,
@@ -344,13 +375,14 @@ projectRoutes.post('/:id/tasks', async (request, response) => {
         assignments: { create: (assigneeIds ?? []).map((userId) => ({ userId })) },
       },
       include: projectTaskInclude,
-    }))
+    })
+  }).then((task) => {
     response.status(201).json(projectTaskResponse(task))
-  } catch (error) {
-    if (error instanceof ArchivedProjectError) return void response.status(403).json({ error: 'Archived projects are read-only' })
+  }).catch((error: unknown) => {
+    if (handleTaskWriteError(response, error)) return
     console.error('Could not create project task', error)
     response.status(503).json({ error: 'Project task could not be saved' })
-  }
+  })
 })
 
 projectRoutes.patch('/:id/tasks/:taskId', async (request, response) => {
@@ -367,43 +399,19 @@ projectRoutes.patch('/:id/tasks/:taskId', async (request, response) => {
     return
   }
   const { changes, tagIds, assigneeIds } = input
-  try {
-    const role = await projectRole(id, userId)
-    if (!role) {
-      response.status(404).json({ error: 'Project not found' })
-      return
-    }
-    if (role === 'viewer') {
-      response.status(403).json({ error: 'Viewers cannot edit tasks' })
-      return
-    }
-    if (assigneeIds && role !== 'owner') {
-      response.status(403).json({ error: 'Only project owners can set assignees' })
-      return
-    }
-    const prisma = getPrisma()
-    const current = await prisma.projectTask.findFirst({ where: { id: taskId, projectId: id } })
-    if (!current) {
-      response.status(404).json({ error: 'Task not found' })
-      return
-    }
-    if (tagIds && !await projectOwnsTags(id, tagIds)) {
-      response.status(400).json({ error: 'Tags must belong to this project' })
-      return
-    }
-    if (assigneeIds && !await projectHasAssignees(id, assigneeIds)) {
-      response.status(400).json({ error: 'Assignees must be members of this project' })
-      return
-    }
+  await writeActiveProject(id, userId, async (tx, access) => {
+    const current = await editableProjectTask(tx, id, taskId, userId, access)
+    await validateProjectAssignees(tx, id, access.role, assigneeIds)
+    if (tagIds && !await projectOwnsTags(tx, id, tagIds)) throw new ProjectWriteError(400, 'Tags must belong to this project')
     if (changes.status && changes.status !== current.status) {
-      const latest = await prisma.projectTask.aggregate({
+      const latest = await tx.projectTask.aggregate({
         where: { projectId: id, status: changes.status },
         _max: { orderIndex: true },
       })
       changes.orderIndex = (latest._max.orderIndex ?? -1) + 1
       changes.completedAt = changes.status === 'completed' ? new Date() : null
     }
-    const task = await writeProjectTask(id, (tx) => tx.projectTask.update({
+    return tx.projectTask.update({
       where: { id: taskId, projectId: id },
       data: {
         ...changes,
@@ -411,17 +419,14 @@ projectRoutes.patch('/:id/tasks/:taskId', async (request, response) => {
         ...(assigneeIds ? { assignments: { deleteMany: {}, create: assigneeIds.map((userId) => ({ userId })) } } : {}),
       },
       include: projectTaskInclude,
-    }))
+    })
+  }).then((task) => {
     response.json(projectTaskResponse(task))
-  } catch (error) {
-    if (error instanceof ArchivedProjectError) return void response.status(403).json({ error: 'Archived projects are read-only' })
-    if (missingProject(error)) {
-      response.status(404).json({ error: 'Task not found' })
-      return
-    }
+  }).catch((error: unknown) => {
+    if (handleTaskWriteError(response, error)) return
     console.error('Could not edit project task', error)
     response.status(503).json({ error: 'Project task could not be updated' })
-  }
+  })
 })
 
 projectRoutes.delete('/:id/tasks/:taskId', async (request, response) => {
@@ -437,23 +442,13 @@ projectRoutes.delete('/:id/tasks/:taskId', async (request, response) => {
     return
   }
   try {
-    const role = await projectRole(id, userId)
-    if (!role) {
-      response.status(404).json({ error: 'Project not found' })
-      return
-    }
-    if (role === 'viewer') {
-      response.status(403).json({ error: 'Viewers cannot delete tasks' })
-      return
-    }
-    await writeProjectTask(id, (tx) => tx.projectTask.delete({ where: { id: taskId, projectId: id } }))
+    await writeActiveProject(id, userId, async (tx, access) => {
+      await editableProjectTask(tx, id, taskId, userId, access)
+      await tx.projectTask.delete({ where: { id: taskId, projectId: id } })
+    })
     response.sendStatus(204)
   } catch (error) {
-    if (error instanceof ArchivedProjectError) return void response.status(403).json({ error: 'Archived projects are read-only' })
-    if (missingProject(error)) {
-      response.status(404).json({ error: 'Task not found' })
-      return
-    }
+    if (handleTaskWriteError(response, error)) return
     console.error('Could not delete project task', error)
     response.status(503).json({ error: 'Project task could not be deleted' })
   }
@@ -472,12 +467,13 @@ projectRoutes.patch('/:id', async (request, response) => {
     return
   }
   try {
-    const project = await getPrisma().project.update({
-      where: { id, archivedAt: null, memberships: { some: { userId, role: 'owner' } } },
-      data: changes,
+    const project = await writeActiveProject(id, userId, (tx, access) => {
+      if (!isProjectOwner(access.role)) throw new ProjectWriteError(404, 'Project not found')
+      return tx.project.update({ where: { id }, data: changes })
     })
     response.json(project)
   } catch (error) {
+    if (error instanceof ProjectWriteError) return void response.status(error.status).json({ error: error.message })
     if (missingProject(error)) {
       response.status(404).json({ error: 'Project not found' })
       return

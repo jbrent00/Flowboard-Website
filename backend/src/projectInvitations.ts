@@ -1,6 +1,6 @@
 import { getAuth } from '@clerk/express'
 import { Router, type ErrorRequestHandler, type Request, type Response } from 'express'
-import { projectId, projectRole } from './projectAccess.js'
+import { isNonOwnerProjectRole, isProjectOwner, projectId, projectRole } from './projectAccess.js'
 import { getPrisma } from './prisma.js'
 import { normalizeEmail } from './verifiedEmail.js'
 
@@ -25,7 +25,7 @@ async function ownerProject(request: Request, response: Response) {
     response.status(404).json({ error: 'Project not found' })
     return null
   }
-  if (role !== 'owner') {
+  if (!isProjectOwner(role)) {
     response.status(403).json({ error: 'Only project owners can manage invitations' })
     return null
   }
@@ -56,7 +56,7 @@ projectInvitationRoutes.post('/', async (request, response) => {
   const input = body as Record<string, unknown>
   const email = typeof input.email === 'string' ? input.email.trim() : ''
   const role = input.role
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || (role !== 'editor' && role !== 'viewer')) {
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !isNonOwnerProjectRole(role)) {
     response.status(400).json({ error: 'A valid email and an editor or viewer role are required' })
     return
   }

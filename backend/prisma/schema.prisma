@@ -39,6 +39,8 @@ model Project {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
   archivedAt  DateTime?
+  editorsCanCreateTasks  Boolean @default(true)
+  editorsCanEditAllTasks Boolean @default(true)
   memberships ProjectMembership[]
   tasks       ProjectTask[]
   tags        ProjectTag[]

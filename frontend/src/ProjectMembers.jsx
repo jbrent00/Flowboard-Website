@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
 import { changeProjectMemberRole, memberName, removeProjectMember } from './projectMemberApi.js'
+import { transferProjectOwnership } from './projectLifecycleApi.js'
 import styles from './ProjectInvitations.module.css'
 
 const roleNames = { owner: 'Owner', editor: 'Editor', viewer: 'Viewer' }
 
-export default function ProjectMembers({ projectId, userId, isOwner, getToken, members, setMembers, status, retry }) {
+export default function ProjectMembers({ projectId, userId, isOwner, getToken, members, setMembers, status, retry, onTransfer }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [feedback, setFeedback] = useState('')
@@ -12,6 +13,7 @@ export default function ProjectMembers({ projectId, userId, isOwner, getToken, m
 
   async function manageMember(member, name, role, button) {
     if (busy || (role === null && !window.confirm(`Remove ${name} from this project?`))) return
+    if (role === 'owner' && !window.confirm(`Make ${name} the owner? You will become an editor and lose owner controls.`)) return
     setBusy(true)
     setError('')
     setFeedback('')
@@ -22,6 +24,10 @@ export default function ProjectMembers({ projectId, userId, isOwner, getToken, m
         if (document.activeElement === button) summary.current?.focus()
         setMembers((current) => current.filter((item) => item.userId !== member.userId))
         setFeedback(`Removed ${name} from the project.`)
+      } else if (role === 'owner') {
+        await transferProjectOwnership(token, projectId, member.userId)
+        summary.current?.focus()
+        onTransfer()
       } else {
         await changeProjectMemberRole(token, projectId, member.userId, role)
         setMembers((current) => current.map((item) => item.userId === member.userId ? { ...item, role } : item))
@@ -57,6 +63,8 @@ export default function ProjectMembers({ projectId, userId, isOwner, getToken, m
                   <option value="editor">Editor</option>
                   <option value="viewer">Viewer</option>
                 </select>
+                {member.role === 'editor' && <button type="button" disabled={busy}
+                  aria-label={`Make ${name} owner`} onClick={() => manageMember(member, name, 'owner')}>Make owner</button>}
                 <button type="button" aria-label={`Remove ${name}`} aria-disabled={busy}
                   onClick={(event) => manageMember(member, name, null, event.currentTarget)}>Remove</button>
               </div> : <span className={styles.meta}>{roleNames[member.role]}</span>}

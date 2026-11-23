@@ -1,6 +1,6 @@
 import { getAuth } from '@clerk/express'
 import { Router, type ErrorRequestHandler, type Request, type Response } from 'express'
-import { projectId, projectRole } from './projectAccess.js'
+import { isNonOwnerProjectRole, isProjectOwner, projectId, projectRole } from './projectAccess.js'
 import { getPrisma } from './prisma.js'
 
 export const projectMemberRoutes = Router({ mergeParams: true })
@@ -46,7 +46,7 @@ async function changeMember(request: Request, response: Response) {
     response.status(404).json({ error: 'Project not found' })
     return
   }
-  if (callerRole !== 'owner') {
+  if (!isProjectOwner(callerRole)) {
     response.status(403).json({ error: 'Only project owners can manage members' })
     return
   }
@@ -66,7 +66,7 @@ async function changeMember(request: Request, response: Response) {
     changed = await memberships.deleteMany({ where })
   } else {
     const role: unknown = request.body?.role
-    if (role !== 'editor' && role !== 'viewer') {
+    if (!isNonOwnerProjectRole(role)) {
       response.status(400).json({ error: 'Choose Editor or Viewer' })
       return
     }
@@ -74,7 +74,7 @@ async function changeMember(request: Request, response: Response) {
   }
 
   if (!changed.count) {
-    if (await projectRole(access.id, userId) === 'owner') {
+    if (isProjectOwner(await projectRole(access.id, userId))) {
       response.status(409).json({ error: 'Transfer ownership before changing or removing an owner' })
       return
     }

@@ -1,10 +1,11 @@
 import { RedirectToSignIn, SignIn, SignUp, UserButton, useAuth } from '@clerk/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useParams } from 'react-router'
 import App from './App.jsx'
 import InvitationInbox from './InvitationInbox.jsx'
 import ProjectInvitations from './ProjectInvitations.jsx'
 import ProjectMembers from './ProjectMembers.jsx'
+import ProjectSettings from './ProjectSettings.jsx'
 import ProjectTasks from './ProjectTasks.jsx'
 import { listProjectMembers } from './projectMemberApi.js'
 import { backendBaseUrl, listTasks } from './taskApi.js'
@@ -158,7 +159,7 @@ function MemberProjectList({ getToken }) {
 
   return (
     <>
-      <div className="accountBar">
+      <div className="accountBar projectAccountBar">
         <Link to="/">Flowboard</Link>
         <WorkspaceNav />
         <UserButton />
@@ -202,6 +203,8 @@ function MemberProjectBoard({ id, userId, getToken }) {
   const [attempt, setAttempt] = useState(0)
   const [archiveBusy, setArchiveBusy] = useState(false)
   const [archiveError, setArchiveError] = useState('')
+  const [projectFeedback, setProjectFeedback] = useState('')
+  const heading = useRef(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -251,7 +254,7 @@ function MemberProjectBoard({ id, userId, getToken }) {
 
   return (
     <>
-      <div className="accountBar">
+      <div className="accountBar projectAccountBar">
         <Link to="/">Flowboard</Link>
         <WorkspaceNav />
         <UserButton />
@@ -265,21 +268,31 @@ function MemberProjectBoard({ id, userId, getToken }) {
           setAttempt((value) => value + 1)
         }}>Retry</button></p>}
         {status === 'ready' && project && <>
-          <h1>{project.title}</h1>
-          {project.description && <p className="projectDescription">{project.description}</p>}
+          <header className="projectHeader">
+            <div className="projectHeading">
+              <h1 ref={heading} tabIndex={-1}>{project.title}</h1>
+              {project.description && <p className="projectDescription">{project.description}</p>}
+            </div>
+            {project.role === 'owner' && <button type="button" className="projectArchiveAction" disabled={archiveBusy} onClick={changeArchiveState}>
+              {project.archivedAt ? 'Restore project' : 'Archive project'}
+            </button>}
+          </header>
           {project.archivedAt && <p role="status">This project is archived.</p>}
-          {project.role === 'owner' && <button type="button" className="projectArchiveAction" disabled={archiveBusy} onClick={changeArchiveState}>
-            {project.archivedAt ? 'Restore project' : 'Archive project'}
-          </button>}
           {archiveError && <p className="projectTaskError" role="alert">{archiveError}</p>}
-          <ProjectWorkspace key={Boolean(project.archivedAt)} project={project} userId={userId} getToken={getToken} />
+          <div role="status">{projectFeedback && <p>{projectFeedback}</p>}</div>
+          <ProjectWorkspace key={`${Boolean(project.archivedAt)}:${project.role}`} project={project} userId={userId} getToken={getToken}
+            onTransfer={() => {
+              setProject((current) => ({ ...current, role: 'editor' }))
+              setProjectFeedback('Ownership transferred. You are now an editor.')
+              heading.current?.focus()
+            }} />
         </>}
       </main>
     </>
   )
 }
 
-function ProjectWorkspace({ project, userId, getToken }) {
+function ProjectWorkspace({ project, userId, getToken, onTransfer }) {
   const [members, setMembers] = useState(null)
   const [status, setStatus] = useState('loading')
   const [attempt, setAttempt] = useState(0)
@@ -309,9 +322,12 @@ function ProjectWorkspace({ project, userId, getToken }) {
   }
 
   return <>
-    <ProjectMembers projectId={projectId} userId={userId} isOwner={isOwner} getToken={getToken}
-      members={members} setMembers={setMembers} status={status} retry={retry} />
-    {isOwner && <ProjectInvitations projectId={projectId} getToken={getToken} />}
+    <div className="projectManagement">
+      <ProjectMembers projectId={projectId} userId={userId} isOwner={isOwner} getToken={getToken}
+        members={members} setMembers={setMembers} status={status} retry={retry} onTransfer={onTransfer} />
+      {isOwner && <ProjectInvitations projectId={projectId} getToken={getToken} />}
+      {project.role === 'owner' && <ProjectSettings project={project} getToken={getToken} />}
+    </div>
     <ProjectTasks projectId={projectId} getToken={getToken} canEdit={!project.archivedAt && (isOwner || project.role === 'editor')}
       canAssign={isOwner} members={members} memberStatus={status} />
   </>
