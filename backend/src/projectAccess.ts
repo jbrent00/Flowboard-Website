@@ -23,6 +23,10 @@ export function canWriteProjectContent(role: ProjectRole) {
   return isProjectOwner(role) || role === 'editor'
 }
 
+export function canCommentOnProjectTask(role: ProjectRole, viewersCanComment: boolean) {
+  return canWriteProjectContent(role) || (role === 'viewer' && viewersCanComment)
+}
+
 export function canCreateProjectTask(role: ProjectRole, editorsCanCreateTasks: boolean) {
   return isProjectOwner(role) || (role === 'editor' && editorsCanCreateTasks)
 }
@@ -37,8 +41,19 @@ export function canEditProjectTask(
     (task.assignments.length === 0 && task.createdById === userId)
 }
 
-export function canSetProjectTaskAssignees(role: ProjectRole) {
-  return isProjectOwner(role)
+export type AssignmentPolicy = {
+  editorsCanAssignOthers: boolean
+  editorsCanJoinTasks: boolean
+  editorsCanLeaveTasks: boolean
+}
+
+export function canChangeProjectTaskAssignees(
+  access: AssignmentPolicy & { role: ProjectRole }, userId: string, added: string[], removed: string[],
+) {
+  if (access.role !== 'editor') return isProjectOwner(access.role)
+  if (added.includes(userId) && !access.editorsCanJoinTasks) return false
+  if (removed.includes(userId) && !access.editorsCanLeaveTasks) return false
+  return access.editorsCanAssignOthers || [...added, ...removed].every((id) => id === userId)
 }
 
 export function isNonOwnerProjectRole(role: unknown): role is 'editor' | 'viewer' {

@@ -17,6 +17,7 @@ model User {
   updatedAt    DateTime @updatedAt
   tasksCreated Task[]
   projectTasksCreated ProjectTask[]
+  projectTaskComments ProjectTaskComment[]
   tags         Tag[]
   memberships  ProjectMembership[]
   verifiedEmails UserEmail[]
@@ -41,6 +42,10 @@ model Project {
   archivedAt  DateTime?
   editorsCanCreateTasks  Boolean @default(true)
   editorsCanEditAllTasks Boolean @default(true)
+  editorsCanAssignOthers Boolean @default(true)
+  editorsCanJoinTasks    Boolean @default(true)
+  editorsCanLeaveTasks   Boolean @default(true)
+  viewersCanComment      Boolean @default(true)
   memberships ProjectMembership[]
   tasks       ProjectTask[]
   tags        ProjectTag[]
@@ -95,9 +100,22 @@ model ProjectTask {
   createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
   taskTags    ProjectTaskTag[]
   assignments ProjectTaskAssignment[]
+  comments    ProjectTaskComment[]
 
   @@index([projectId, status, orderIndex])
   @@unique([projectId, id])
+}
+
+model ProjectTaskComment {
+  id        Int         @id @default(autoincrement())
+  taskId    Int
+  authorId  String
+  body      String
+  createdAt DateTime    @default(now())
+  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, id])
 }
 
 model ProjectTaskAssignment {

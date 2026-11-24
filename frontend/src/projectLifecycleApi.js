@@ -18,6 +18,10 @@ export function transferProjectOwnership(token, projectId, userId) {
   return changeProject(token, projectId, '/transfer-ownership', 'POST', { userId })
 }
 
+export function updateProjectPolicies(token, projectId, policies) {
+  return changeProject(token, projectId, '', 'PATCH', policies)
+}
+
 export function deleteProject(token, projectId, confirmTitle) {
   return changeProject(token, projectId, '', 'DELETE', { confirmTitle })
 }

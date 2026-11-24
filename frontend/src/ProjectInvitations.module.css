@@ -12,7 +12,7 @@
 .body h2 { margin: 16px 0 8px; font-size: 16px; }
 .form { display: grid; gap: 8px; }
 .form label { font-size: 14px; font-weight: 600; }
-.form input, .form select, .rowActions select {
+.form input:not([type='checkbox']), .form select, .rowActions select {
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -24,6 +24,10 @@
   font: inherit;
 }
 .rowActions select { width: auto; }
+
+.policies { min-width: 0; margin: 8px 0 0; padding: 0; border: 0; }
+.policies legend { font-weight: 600; }
+.policies label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
 
 .body button {
   padding: 8px 12px;

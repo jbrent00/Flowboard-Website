@@ -281,6 +281,7 @@ function MemberProjectBoard({ id, userId, getToken }) {
           {archiveError && <p className="projectTaskError" role="alert">{archiveError}</p>}
           <div role="status">{projectFeedback && <p>{projectFeedback}</p>}</div>
           <ProjectWorkspace key={`${Boolean(project.archivedAt)}:${project.role}`} project={project} userId={userId} getToken={getToken}
+            onPoliciesSaved={(changes) => setProject((current) => ({ ...current, ...changes }))}
             onTransfer={() => {
               setProject((current) => ({ ...current, role: 'editor' }))
               setProjectFeedback('Ownership transferred. You are now an editor.')
@@ -292,7 +293,7 @@ function MemberProjectBoard({ id, userId, getToken }) {
   )
 }
 
-function ProjectWorkspace({ project, userId, getToken, onTransfer }) {
+function ProjectWorkspace({ project, userId, getToken, onTransfer, onPoliciesSaved }) {
   const [members, setMembers] = useState(null)
   const [status, setStatus] = useState('loading')
   const [attempt, setAttempt] = useState(0)
@@ -326,7 +327,7 @@ function ProjectWorkspace({ project, userId, getToken, onTransfer }) {
       <ProjectMembers projectId={projectId} userId={userId} isOwner={isOwner} getToken={getToken}
         members={members} setMembers={setMembers} status={status} retry={retry} onTransfer={onTransfer} />
       {isOwner && <ProjectInvitations projectId={projectId} getToken={getToken} />}
-      {project.role === 'owner' && <ProjectSettings project={project} getToken={getToken} />}
+      {project.role === 'owner' && <ProjectSettings project={project} getToken={getToken} onPoliciesSaved={onPoliciesSaved} />}
     </div>
     <ProjectTasks projectId={projectId} getToken={getToken} canEdit={!project.archivedAt && (isOwner || project.role === 'editor')}
       canAssign={isOwner} members={members} memberStatus={status} />
