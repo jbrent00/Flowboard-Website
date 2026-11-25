@@ -105,6 +105,12 @@ body { margin: 0; }
 .projectPage .projectTaskForm button, .projectPage .projectTaskActions button { color: #fff; }
 .projectPage .projectTaskActions button:last-child { color: #31547e; }
 .projectPage :focus-visible { outline: 2px solid #31547e; outline-offset: 3px; }
+.projectTaskComments { margin-top: 12px; border-top: 1px solid #dce2e9; }
+.projectTaskComments summary { min-height: 44px; padding: 12px 0; font-weight: 600; cursor: pointer; }
+.projectTaskComments ol { margin: 0; padding: 0; list-style: none; }
+.projectTaskComments li + li { padding-top: 10px; border-top: 1px solid #dce2e9; }
+.projectTaskComments .projectCommentBody { color: #243044; white-space: pre-wrap; }
+.projectTaskComments p[role='alert'] { color: #a52828; }
 .accountActions { display: flex; align-items: center; gap: 12px; }
 .accountActions button {
   min-height: 44px;

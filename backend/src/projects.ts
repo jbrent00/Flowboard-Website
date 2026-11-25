@@ -503,6 +503,28 @@ for (const action of ['join', 'leave'] as const) {
   })
 }
 
+const commentAuthor = { select: { firstName: true, lastName: true } } as const
+
+projectRoutes.get('/:id/tasks/:taskId/comments', async (request, response) => {
+  const { userId } = getAuth(request)
+  if (!userId) return void response.status(401).json({ error: 'Unauthorized' })
+  const id = projectId(request.params.id)
+  const taskId = projectId(request.params.taskId)
+  if (!id || !taskId) return void response.status(400).json({ error: 'Invalid task id' })
+
+  try {
+    const task = await getPrisma().projectTask.findFirst({
+      where: { id: taskId, projectId: id, project: { memberships: { some: { userId } } } },
+      select: { comments: { orderBy: { id: 'asc' }, include: { author: commentAuthor } } },
+    })
+    if (!task) return void response.status(404).json({ error: 'Task not found' })
+    response.set('Cache-Control', 'no-store').json(task.comments)
+  } catch (error) {
+    console.error('Could not load project task comments', error)
+    response.status(503).json({ error: 'Comments could not be loaded' })
+  }
+})
+
 projectRoutes.post('/:id/tasks/:taskId/comments', async (request, response) => {
   const { userId } = getAuth(request)
   if (!userId) return void response.status(401).json({ error: 'Unauthorized' })
@@ -526,6 +548,7 @@ projectRoutes.post('/:id/tasks/:taskId/comments', async (request, response) => {
           task: { connect: { id: taskId, projectId: id } },
           author: { connect: { id: userId } },
         },
+        include: { author: commentAuthor },
       })
     })
     response.status(201).json(comment)

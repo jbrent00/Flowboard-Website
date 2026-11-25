@@ -277,7 +277,7 @@ function MemberProjectBoard({ id, userId, getToken }) {
               {project.archivedAt ? 'Restore project' : 'Archive project'}
             </button>}
           </header>
-          {project.archivedAt && <p role="status">This project is archived.</p>}
+          {project.archivedAt && <p role="status">This project is archived. Tasks are read-only.</p>}
           {archiveError && <p className="projectTaskError" role="alert">{archiveError}</p>}
           <div role="status">{projectFeedback && <p>{projectFeedback}</p>}</div>
           <ProjectWorkspace key={`${Boolean(project.archivedAt)}:${project.role}`} project={project} userId={userId} getToken={getToken}
@@ -329,8 +329,7 @@ function ProjectWorkspace({ project, userId, getToken, onTransfer, onPoliciesSav
       {isOwner && <ProjectInvitations projectId={projectId} getToken={getToken} />}
       {project.role === 'owner' && <ProjectSettings project={project} getToken={getToken} onPoliciesSaved={onPoliciesSaved} />}
     </div>
-    <ProjectTasks projectId={projectId} getToken={getToken} canEdit={!project.archivedAt && (isOwner || project.role === 'editor')}
-      canAssign={isOwner} members={members} memberStatus={status} />
+    <ProjectTasks project={project} userId={userId} getToken={getToken} members={members} memberStatus={status} />
   </>
 }
 

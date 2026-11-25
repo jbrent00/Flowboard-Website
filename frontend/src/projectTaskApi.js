@@ -35,3 +35,17 @@ export function updateProjectTask(token, projectId, taskId, fields) {
 export function deleteProjectTask(token, projectId, taskId) {
   return request(token, projectId, `/${taskId}`, { method: 'DELETE' })
 }
+
+export function changeProjectTaskParticipation(token, projectId, taskId, action) {
+  return request(token, projectId, `/${taskId}/${action}`, { method: 'POST' })
+}
+
+export function listProjectTaskComments(token, projectId, taskId, signal) {
+  return request(token, projectId, `/${taskId}/comments`, { signal })
+}
+
+export function createProjectTaskComment(token, projectId, taskId, body) {
+  return request(token, projectId, `/${taskId}/comments`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }),
+  })
+}
